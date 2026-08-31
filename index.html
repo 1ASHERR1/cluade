@@ -1,0 +1,1536 @@
+<title>Bull Run</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+<style>
+/* ============================================================
+   BULL RUN — a trading desk at 4am.
+   Single committed dark identity: this is a lit terminal in a
+   dark room, so every colour is painted explicitly and there is
+   no light variant to fall back to.
+   ============================================================ */
+:root{
+  --ink:#070A14;      /* ground */
+  --ink-2:#0D1224;    /* panels */
+  --ink-3:#161C34;    /* raised */
+  --line:#232B4A;     /* hairlines */
+  --line-2:#2E3862;
+  --haze:#7E86AE;     /* muted text, biased blue toward the ground */
+  --chalk:#E6E9F5;    /* primary text */
+  --gold:#F5C453;     /* money, the one loud colour */
+  --gold-2:#FFE0A0;
+  --gold-dim:#7A6026;
+  --mint:#3FE0A8;     /* up */
+  --rose:#FF5A6E;     /* down */
+  --violet:#8B6BFF;   /* upgrades, the desk */
+
+  --f-display:"Instrument Serif",Georgia,"Times New Roman",serif;
+  --f-ui:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;
+  --f-data:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+
+  --gap:clamp(10px,1.6vw,18px);
+  --rail:clamp(52px,7vh,64px);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--ink);color:var(--chalk);
+  font-family:var(--f-ui);font-size:15px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;overscroll-behavior:none;
+}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:3px}
+
+/* ---------- shell ---------- */
+#app{
+  position:relative;height:100dvh;width:100%;
+  display:grid;grid-template-rows:auto auto 1fr auto;
+  background:
+    radial-gradient(120% 80% at 50% -10%,#131A33 0%,rgba(19,26,51,0) 60%),
+    var(--ink);
+  overflow:hidden;user-select:none;-webkit-user-select:none;
+  touch-action:manipulation;
+}
+
+/* ---------- top rail ---------- */
+#rail{
+  display:flex;align-items:center;gap:var(--gap);
+  padding:0 var(--gap);height:var(--rail);
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(13,18,36,.9),rgba(7,10,20,.6));
+}
+.mark{
+  font-family:var(--f-display);font-size:clamp(20px,2.6vw,28px);
+  letter-spacing:.01em;color:var(--gold);white-space:nowrap;line-height:1;
+}
+.mark i{font-style:italic;color:var(--chalk)}
+.rail-spacer{flex:1}
+.stat{display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat .k{
+  font-family:var(--f-ui);font-size:9.5px;font-weight:600;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--haze);white-space:nowrap;
+}
+.stat .v{
+  font-family:var(--f-data);font-size:clamp(13px,1.7vw,17px);font-weight:500;
+  font-variant-numeric:tabular-nums;white-space:nowrap;line-height:1.15;
+}
+.stat.equity .v{color:var(--gold);font-size:clamp(15px,2.1vw,21px);font-weight:600}
+.stat.right{align-items:flex-end;text-align:right}
+.divider{width:1px;height:30px;background:var(--line);flex:none}
+.icon-btn{
+  width:34px;height:34px;flex:none;display:grid;place-items:center;
+  border:1px solid var(--line);border-radius:8px;color:var(--haze);
+  background:var(--ink-2);transition:color .15s,border-color .15s;
+}
+.icon-btn:hover{color:var(--gold);border-color:var(--line-2)}
+.icon-btn svg{width:16px;height:16px}
+
+/* progress toward the day's number */
+#progwrap{flex:1;min-width:80px;max-width:340px;display:flex;flex-direction:column;gap:5px}
+#progbar{
+  position:relative;height:5px;border-radius:99px;overflow:hidden;
+  background:var(--ink-3);border:1px solid var(--line);
+}
+#progfill{
+  position:absolute;inset:0;transform-origin:left;transform:scaleX(0);
+  background:linear-gradient(90deg,var(--gold-dim),var(--gold));
+  transition:transform .12s linear;
+}
+#progbar.hit #progfill{background:linear-gradient(90deg,#1E8F6A,var(--mint))}
+.prog-legend{display:flex;justify-content:space-between;gap:8px}
+
+/* ---------- ticker tape ---------- */
+#tape{
+  height:26px;overflow:hidden;position:relative;
+  border-bottom:1px solid var(--line);background:#05070F;
+}
+#tape-track{
+  position:absolute;top:0;left:0;height:100%;display:flex;align-items:center;
+  gap:34px;white-space:nowrap;will-change:transform;
+  font-family:var(--f-data);font-size:11px;letter-spacing:.04em;color:#4E5680;
+}
+#tape-track b{font-weight:500;color:var(--haze)}
+#tape-track .up{color:#2E9E78}
+#tape-track .dn{color:#A84152}
+
+/* ---------- chart ---------- */
+#stage{position:relative;min-height:0}
+#chart{display:block;width:100%;height:100%}
+#news{
+  position:absolute;left:50%;top:18px;transform:translateX(-50%);
+  display:none;align-items:center;gap:10px;padding:8px 16px;
+  border-radius:99px;border:1px solid var(--line-2);
+  background:rgba(13,18,36,.92);backdrop-filter:blur(6px);
+  font-family:var(--f-data);font-size:12px;letter-spacing:.06em;
+  text-transform:uppercase;white-space:nowrap;max-width:92%;overflow:hidden;
+}
+#news.on{display:flex}
+#news .dot{width:7px;height:7px;border-radius:99px;flex:none;animation:blip .55s steps(2,end) infinite}
+#news.bull{color:var(--mint);border-color:rgba(63,224,168,.4)}
+#news.bull .dot{background:var(--mint)}
+#news.bear{color:var(--rose);border-color:rgba(255,90,110,.4)}
+#news.bear .dot{background:var(--rose)}
+#news.wild{color:var(--gold);border-color:rgba(245,196,83,.4)}
+#news.wild .dot{background:var(--gold)}
+@keyframes blip{50%{opacity:.15}}
+
+#breaker-tag{
+  position:absolute;right:14px;top:16px;padding:5px 10px;border-radius:7px;
+  border:1px solid rgba(139,107,255,.45);background:rgba(139,107,255,.12);
+  color:#B3A0FF;font-family:var(--f-data);font-size:10.5px;letter-spacing:.1em;
+  text-transform:uppercase;display:none;
+}
+#breaker-tag.on{display:block}
+#breaker-tag.spent{opacity:.3}
+
+/* ---------- desk (bottom controls) ---------- */
+#desk{
+  border-top:1px solid var(--line);background:linear-gradient(0deg,#0B0F1E,#0D1224);
+  padding:var(--gap);display:flex;align-items:stretch;gap:var(--gap);
+}
+#readout{
+  flex:1;min-width:0;display:grid;gap:10px 18px;align-content:center;
+  grid-template-columns:repeat(auto-fit,minmax(84px,1fr));
+}
+#pnl-cell .v{font-size:clamp(17px,2.6vw,24px);font-weight:600}
+.pos-up{color:var(--mint)}
+.pos-dn{color:var(--rose)}
+.pos-flat{color:var(--haze)}
+#trigger{display:flex;gap:10px;flex:none}
+.tbtn{
+  position:relative;width:clamp(96px,15vw,140px);
+  border:1px solid var(--line-2);border-radius:12px;
+  background:var(--ink-3);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;padding:10px 6px;
+  transition:transform .07s,background .12s,border-color .12s,box-shadow .12s;
+  overflow:hidden;
+}
+.tbtn .lbl{
+  font-family:var(--f-ui);font-size:13px;font-weight:600;letter-spacing:.14em;
+}
+.tbtn .key{font-family:var(--f-data);font-size:9.5px;color:var(--haze);letter-spacing:.08em}
+.tbtn.long .lbl{color:var(--mint)}
+.tbtn.short .lbl{color:var(--rose)}
+.tbtn:hover{border-color:#3C4778}
+.tbtn.armed{transform:translateY(2px)}
+.tbtn.long.armed{background:rgba(63,224,168,.16);border-color:var(--mint);box-shadow:0 0 22px rgba(63,224,168,.22) inset}
+.tbtn.short.armed{background:rgba(255,90,110,.16);border-color:var(--rose);box-shadow:0 0 22px rgba(255,90,110,.22) inset}
+
+/* ---------- held upgrades strip ---------- */
+#held:empty{display:none}
+#held{
+  display:flex;gap:6px;flex-wrap:wrap;padding:0 var(--gap) 10px;
+  border-top:0;max-height:56px;overflow:hidden;
+}
+.chip{
+  display:flex;align-items:center;gap:6px;padding:3px 9px;border-radius:99px;
+  border:1px solid var(--line);background:var(--ink-2);
+  font-family:var(--f-data);font-size:10.5px;letter-spacing:.05em;color:#A6ADD0;
+}
+.chip .g{color:var(--violet);font-size:11px}
+.chip.stack::after{content:"×" attr(data-n);color:var(--gold);font-weight:600}
+
+/* ---------- overlays ---------- */
+#veil{
+  position:absolute;inset:0;display:none;place-items:center;padding:var(--gap);
+  background:radial-gradient(80% 60% at 50% 40%,rgba(7,10,20,.72),rgba(7,10,20,.93));
+  backdrop-filter:blur(7px);z-index:20;overflow:auto;
+}
+#veil.on{display:grid}
+.card{
+  width:min(860px,100%);border:1px solid var(--line);border-radius:16px;
+  background:linear-gradient(180deg,rgba(19,25,48,.96),rgba(9,13,26,.98));
+  padding:clamp(20px,3.4vw,38px);box-shadow:0 30px 90px rgba(0,0,0,.6);
+  animation:rise .34s cubic-bezier(.2,.9,.3,1) both;
+}
+@keyframes rise{from{opacity:0;transform:translateY(14px) scale(.985)}}
+.eyebrow{
+  font-family:var(--f-data);font-size:10.5px;letter-spacing:.24em;
+  text-transform:uppercase;color:var(--haze);margin:0 0 10px;
+}
+.card h1{
+  font-family:var(--f-display);font-weight:400;line-height:.94;
+  font-size:clamp(42px,8vw,86px);margin:0 0 6px;text-wrap:balance;letter-spacing:-.01em;
+}
+.card h1 em{font-style:italic;color:var(--gold)}
+.card h2{
+  font-family:var(--f-display);font-weight:400;font-size:clamp(28px,4.6vw,46px);
+  margin:0 0 8px;line-height:1;text-wrap:balance;
+}
+.lede{color:#AEB5D6;max-width:60ch;margin:0 0 20px}
+.lede b{color:var(--chalk);font-weight:500}
+.figure{
+  font-family:var(--f-display);font-style:italic;color:var(--gold);
+  font-size:clamp(46px,9vw,92px);line-height:1;font-variant-numeric:tabular-nums;
+}
+.rules{
+  display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+  margin:22px 0;padding:18px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+}
+.rule .n{
+  font-family:var(--f-data);font-size:10px;letter-spacing:.2em;color:var(--gold);
+  display:block;margin-bottom:5px;
+}
+.rule p{margin:0;font-size:13.5px;color:#A6ADD0;line-height:1.45}
+.rule kbd{
+  font-family:var(--f-data);font-size:11px;background:var(--ink-3);color:var(--chalk);
+  border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;padding:1px 5px;
+}
+.cta{
+  display:inline-flex;align-items:center;gap:10px;padding:13px 26px;border-radius:11px;
+  background:var(--gold);color:#12100A;font-weight:600;letter-spacing:.03em;font-size:15px;
+  transition:transform .1s,box-shadow .2s,background .2s;
+  box-shadow:0 0 0 rgba(245,196,83,0);
+}
+.cta:hover{background:var(--gold-2);box-shadow:0 8px 34px rgba(245,196,83,.28)}
+.cta:active{transform:translateY(1px)}
+.cta.ghost{background:none;border:1px solid var(--line-2);color:var(--chalk);box-shadow:none}
+.cta.ghost:hover{border-color:var(--gold);color:var(--gold)}
+.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+
+/* offer cards on the desk */
+.offers{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));margin:22px 0 6px}
+.offer{
+  text-align:left;border:1px solid var(--line);border-radius:13px;padding:16px;
+  background:var(--ink-2);display:flex;flex-direction:column;gap:8px;
+  transition:transform .12s,border-color .15s,background .15s;
+}
+.offer:hover{transform:translateY(-3px);border-color:var(--violet);background:#141A33}
+.offer .tag{
+  font-family:var(--f-data);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--violet);
+}
+.offer.rare{border-color:rgba(245,196,83,.35)}
+.offer.rare .tag{color:var(--gold)}
+.offer.rare:hover{border-color:var(--gold)}
+.offer .nm{font-family:var(--f-display);font-size:25px;line-height:1.05}
+.offer .ds{font-size:13px;color:#A6ADD0;margin:0;line-height:1.45;flex:1}
+.offer .own{font-family:var(--f-data);font-size:10.5px;color:var(--haze)}
+
+/* run summary table */
+.ledger{width:100%;border-collapse:collapse;font-family:var(--f-data);font-size:13px;margin:18px 0}
+.ledger td{padding:7px 0;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.ledger td:last-child{text-align:right;color:var(--chalk)}
+.ledger td:first-child{color:var(--haze);letter-spacing:.03em}
+
+.toast{
+  position:absolute;left:50%;bottom:calc(100% + 14px);transform:translateX(-50%);
+  font-family:var(--f-data);font-size:11px;color:var(--haze);white-space:nowrap;
+}
+.hide{display:none!important}
+.mono{font-family:var(--f-data);font-variant-numeric:tabular-nums}
+.gold{color:var(--gold)}
+.mint{color:var(--mint)}
+.rose{color:var(--rose)}
+.haze{color:var(--haze)}
+
+@media (max-width:640px){
+  #rail{gap:10px}
+  .mark{font-size:19px}
+  #progwrap{max-width:none}
+  #desk{flex-direction:column-reverse;gap:12px}
+  #trigger{gap:10px}
+  .tbtn{flex:1;width:auto;padding:16px 6px}
+  #readout{grid-template-columns:repeat(3,1fr);gap:8px}
+  .rules{grid-template-columns:1fr;gap:10px;margin:16px 0;padding:14px 0}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+</style>
+
+<div id="app">
+
+  <header id="rail">
+    <div class="mark">Bull<i>Run</i></div>
+    <div class="divider"></div>
+
+    <div class="stat">
+      <span class="k">Day</span>
+      <span class="v" id="v-day">1<span class="haze">/9</span></span>
+    </div>
+
+    <div id="progwrap">
+      <div id="progbar"><div id="progfill"></div></div>
+      <div class="prog-legend">
+        <span class="k" style="font-size:9.5px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--haze)">Quota</span>
+        <span class="mono" id="v-target" style="font-size:11.5px;color:var(--gold)">$2,200</span>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="stat right">
+      <span class="k">Clock</span>
+      <span class="v" id="v-clock">0:38</span>
+    </div>
+    <div class="divider"></div>
+    <div class="stat right equity">
+      <span class="k">Account</span>
+      <span class="v" id="v-equity">$1,000</span>
+    </div>
+    <button class="icon-btn" id="btn-sound" title="Toggle sound" aria-label="Toggle sound">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M11 5 6 9H2v6h4l5 4V5z"/><path id="wave1" d="M15.5 8.5a5 5 0 0 1 0 7"/><path id="wave2" d="M18.5 5.5a9 9 0 0 1 0 13"/>
+      </svg>
+    </button>
+  </header>
+
+  <div id="tape"><div id="tape-track"></div></div>
+
+  <main id="stage">
+    <canvas id="chart"></canvas>
+    <div id="news"><span class="dot"></span><span id="news-text"></span></div>
+    <div id="breaker-tag">Q · Halt trading</div>
+  </main>
+
+  <footer>
+    <div id="held"></div>
+    <div id="desk">
+      <div id="readout">
+        <div class="stat" id="pnl-cell">
+          <span class="k">Open P&amp;L</span>
+          <span class="v pos-flat" id="v-pnl">—</span>
+        </div>
+        <div class="stat">
+          <span class="k">Position</span>
+          <span class="v" id="v-pos">Flat</span>
+        </div>
+        <div class="stat">
+          <span class="k">Size</span>
+          <span class="v" id="v-stake">$3,000</span>
+        </div>
+        <div class="stat">
+          <span class="k">Leverage</span>
+          <span class="v" id="v-lev">3.0×</span>
+        </div>
+        <div class="stat">
+          <span class="k">Last</span>
+          <span class="v" id="v-last">—</span>
+        </div>
+      </div>
+      <div id="trigger">
+        <button class="tbtn long" id="btn-long">
+          <span class="lbl">LONG</span><span class="key">W / ↑ / SPACE</span>
+        </button>
+        <button class="tbtn short" id="btn-short">
+          <span class="lbl">SHORT</span><span class="key">S / ↓</span>
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <div id="veil"><div id="veil-body"></div></div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   BULL RUN
+   Turn $1,000 into $1,000,000 in nine sessions.
+   You hold a position on a live tape; the desk sells you an
+   edge between days. Miss a quota and your capital walks.
+   ============================================================ */
+
+/* ---------- tuning ------------------------------------------------------ */
+const TUNE = {
+  startEquity : 1000,
+  targets     : [1100, 1650, 2800, 5500, 12000, 30000, 85000, 280000, 1000000],
+  dayLength   : [38, 38, 40, 40, 42, 42, 44, 46, 50],
+  baseLeverage: 4,
+  spread      : 0.0009,   // charged on entry, as a fraction of position size
+  marginCall  : 0.25,     // liquidate below this fraction of the morning balance
+  window      : 11,       // seconds of tape on screen
+  warmup      : 13,       // seconds of history generated before the bell
+  baseVol     : 0.022,    // per root-second
+  volPerDay   : 0.0022,
+  headX       : 0.79,     // where "now" sits across the canvas
+  carryCap    : 1.25,     // the desk sweeps anything above this multiple of the quota you cleared
+};
+
+/* ---------- small tools ------------------------------------------------- */
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp  = (a, b, t) => a + (b - a) * t;
+const $     = id => document.getElementById(id);
+
+function mulberry32(a){
+  return function(){
+    a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function makeGauss(rng){
+  let spare = null;
+  return function(){
+    if (spare !== null){ const s = spare; spare = null; return s; }
+    let u = 0, v = 0, s = 0;
+    do { u = rng() * 2 - 1; v = rng() * 2 - 1; s = u * u + v * v; } while (s >= 1 || s === 0);
+    const m = Math.sqrt(-2 * Math.log(s) / s);
+    spare = v * m;
+    return u * m;
+  };
+}
+const pick = (rng, arr) => arr[Math.floor(rng() * arr.length) % arr.length];
+
+function fmt(n){
+  const v = Math.round(n);
+  if (Math.abs(v) >= 1000000) return "$" + (v / 1000000).toFixed(2) + "M";
+  return "$" + v.toLocaleString("en-US");
+}
+function fmtSigned(n){
+  const s = n < 0 ? "−" : "+";
+  return s + fmt(Math.abs(n));
+}
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------- persistence ------------------------------------------------- */
+const store = {
+  read(){
+    try { return JSON.parse(localStorage.getItem("bullrun.v1") || "{}") || {}; }
+    catch(e){ return {}; }
+  },
+  write(o){ try { localStorage.setItem("bullrun.v1", JSON.stringify(o)); } catch(e){} }
+};
+let META = Object.assign({ best: 0, bestDay: 0, runs: 0, wins: 0, sound: true }, store.read());
+const saveMeta = () => store.write(META);
+
+/* ---------- sound ------------------------------------------------------- */
+const Audio_ = {
+  ctx: null, master: null,
+  boot(){
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    this.ctx = new AC();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = META.sound ? 0.24 : 0;
+    this.master.connect(this.ctx.destination);
+  },
+  set on(v){ if (this.master) this.master.gain.value = v ? 0.24 : 0; },
+  blip(freq, dur, type, vol){
+    if (!this.ctx || !META.sound) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type || "square";
+    o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol || 0.5, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + (dur || 0.09));
+    o.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t + (dur || 0.09) + 0.02);
+  },
+  sweep(f0, f1, dur, type){
+    if (!this.ctx || !META.sound) return;
+    const t = this.ctx.currentTime;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type || "sawtooth";
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.35, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t + dur + 0.02);
+  },
+  chord(freqs, dur){
+    freqs.forEach((f, i) => setTimeout(() => this.blip(f, dur || 0.5, "triangle", 0.4), i * 70));
+  }
+};
+
+/* ---------- the desk's inventory ---------------------------------------- */
+const UPGRADES = [
+  { id:"prime",    name:"Prime Brokerage", tag:"Size",      max:3, weight:10,
+    desc:"+1.0× leverage on every position you take.",
+    apply:m => { m.lev += 1; } },
+  { id:"darkpool", name:"Dark Pool",       tag:"Execution", max:2, weight:8,
+    desc:"Entry costs are cut in half. Churn freely.",
+    apply:m => { m.spreadMult *= 0.5; } },
+  { id:"scalper",  name:"Scalper's Reflex",tag:"Tempo",     max:2, weight:9,
+    desc:"Winning trades closed inside 1.5s pay +28%.",
+    apply:m => { m.scalper += 0.28; } },
+  { id:"diamond",  name:"Diamond Hands",   tag:"Tempo",     max:2, weight:9,
+    desc:"Winning trades held past 3.5s pay +45%.",
+    apply:m => { m.diamond += 0.45; } },
+  { id:"shortint", name:"Short Interest",  tag:"Direction", max:2, weight:8,
+    desc:"Winning shorts pay ×1.40. The way down is faster.",
+    apply:m => { m.shortMult *= 1.4; } },
+  { id:"steady",   name:"Steady Hands",    tag:"Risk",      max:3, weight:9,
+    desc:"Every loss costs 15% less.",
+    apply:m => { m.lossMult *= 0.85; } },
+  { id:"stoploss", name:"Stop Loss",       tag:"Risk",      max:1, weight:7,
+    desc:"A position down 7% of its size closes itself.",
+    apply:m => { m.stopLoss = 0.07; } },
+  { id:"volswap",  name:"Volatility Swap", tag:"Risk",      max:3, weight:7,
+    desc:"The tape swings 30% harder and profits pay +20%.",
+    apply:m => { m.volMult *= 1.3; m.profitMult *= 1.2; } },
+  { id:"breaker",  name:"Circuit Breaker", tag:"Tool",      max:3, weight:7,
+    desc:"Once a day, press Q to halt the tape for 2.5 seconds.",
+    apply:m => { m.breaker += 1; } },
+  { id:"mm",       name:"Market Maker",    tag:"Income",    max:2, weight:8,
+    desc:"Every closed trade rebates 0.12% of its size, win or lose.",
+    apply:m => { m.rebate += 0.0012; } },
+  { id:"overtime", name:"After Hours",     tag:"Clock",     max:3, weight:8,
+    desc:"+7 seconds on the clock, every session.",
+    apply:m => { m.extraTime += 7; } },
+  { id:"hedge",    name:"Hedge Book",      tag:"Risk",      max:2, weight:7,
+    desc:"Your first losing trade each day is refunded.",
+    apply:m => { m.hedge += 1; } },
+  { id:"tipsheet", name:"Tip Sheet",       tag:"Info",      max:2, weight:7,
+    desc:"Headlines break 0.8s earlier, so you can be there first.",
+    apply:m => { m.warnLead += 0.8; } },
+  { id:"tape",     name:"Momentum Tape",   tag:"Info",      max:1, weight:6,
+    desc:"The tape is coloured by its short-term trend.",
+    apply:m => { m.momentum = true; } },
+  { id:"cross",    name:"Cross Margin",    tag:"Risk",      max:1, weight:5, minDay:2,
+    desc:"The margin call moves from 25% down to 18% of your morning balance.",
+    apply:m => { m.marginAt = 0.18; } },
+  { id:"compound", name:"Compounding",     tag:"Size",      max:1, weight:5, minDay:3, rare:true,
+    desc:"Position size follows your live account instead of the morning balance. It cuts both ways.",
+    apply:m => { m.compound = true; } },
+  { id:"sniper",   name:"Sniper",          tag:"Tempo",     max:1, weight:5, minDay:2, rare:true,
+    desc:"The first trade you close each day pays double.",
+    apply:m => { m.sniper = true; } },
+  { id:"bailout",  name:"Bailout Package", tag:"Risk",      max:1, weight:5, minDay:2, rare:true,
+    desc:"Survive a margin call once per run, restarting the day at 30% of your capital.",
+    apply:m => { m.bailout += 1; } },
+  { id:"parachute",name:"Golden Parachute",tag:"Risk",      max:1, weight:5, minDay:3, rare:true,
+    desc:"Once, miss a quota by 25% or less and the desk quietly covers the shortfall.",
+    apply:m => { m.parachute += 1; } },
+  { id:"insider",  name:"Insider Line",    tag:"Info",      max:2, weight:3, minDay:4, rare:true,
+    desc:"A ghost of the next 0.8 seconds is drawn ahead of the tape. Nobody asks how.",
+    apply:m => { m.ghost += 0.8; } }
+];
+
+function freshMods(){
+  return {
+    lev:TUNE.baseLeverage, spreadMult:1, scalper:0, diamond:0, shortMult:1,
+    lossMult:1, profitMult:1, volMult:1, stopLoss:0, breaker:0, rebate:0,
+    extraTime:0, hedge:0, warnLead:1.3, ghost:0, momentum:false, compound:false,
+    sniper:false, bailout:0, parachute:0, marginAt:TUNE.marginCall
+  };
+}
+
+/* ---------- the tape ---------------------------------------------------- */
+const TRENDS = [-0.050, -0.035, -0.035, -0.022, -0.022, -0.010, -0.010, 0, 0,
+                 0.010,  0.010,  0.022,  0.022,  0.035,  0.035,  0.050];
+
+class Market {
+  constructor(seed, vol){
+    this.rng = mulberry32(seed);
+    this.gauss = makeGauss(this.rng);
+    this.base = 100;
+    this.logp = Math.log(this.base);
+    this.price = this.base;
+    this.vol = vol;
+    this.volNow = vol;
+    this.volTarget = vol;
+    this.trend = 0;
+    this.trendTarget = 0;
+    this.regimeIn = 0;
+    this.shock = 0;
+    this.t = 0;
+    this.frozen = 0;
+    this.hist = [];
+  }
+  newRegime(){
+    this.trendTarget = pick(this.rng, TRENDS);
+    this.volTarget = this.vol * (0.65 + this.rng() * 0.95);
+    this.regimeIn = 2.0 + this.rng() * 3.5;
+  }
+  /* an event kicks the tape and colours the next few seconds */
+  impulse(dir, power){
+    this.shock += dir * power;
+    this.trendTarget = dir * (0.015 + power * 0.10);
+    this.volTarget = this.vol * (1.4 + power);
+    this.regimeIn = 1.6 + this.rng() * 1.6;
+  }
+  step(dt){
+    if (this.frozen > 0){
+      this.frozen -= dt;
+      this.t += dt;
+      this.hist.push({ t:this.t, p:this.price });
+      return;
+    }
+    this.t += dt;
+    this.regimeIn -= dt;
+    if (this.regimeIn <= 0) this.newRegime();
+    this.trend += (this.trendTarget - this.trend) * Math.min(1, dt * 2.4);
+    this.volNow += (this.volTarget - this.volNow) * Math.min(1, dt * 1.6);
+    const push = this.shock;
+    this.shock *= Math.pow(0.14, dt);
+    this.logp += (this.trend + push) * dt + this.volNow * this.gauss() * Math.sqrt(dt);
+    this.logp += (Math.log(this.base) - this.logp) * 0.15 * dt;   /* the leash that turns legs into waves */   // a leash, loosely held
+    this.price = Math.exp(this.logp);
+    this.hist.push({ t:this.t, p:this.price });
+    if (this.hist.length > 6000) this.hist.splice(0, 2000);
+  }
+  /* a throwaway clone used only to sketch the insider's ghost */
+  peek(seconds, dt){
+    const snap = {
+      logp:this.logp, trend:this.trend, trendTarget:this.trendTarget,
+      volNow:this.volNow, shock:this.shock, t:this.t
+    };
+    const g = makeGauss(mulberry32(Math.floor(this.t * 7) + 1337));
+    const out = [];
+    let logp = snap.logp, trend = snap.trend, vol = snap.volNow, shock = snap.shock, t = snap.t;
+    for (let s = 0; s < seconds; s += dt){
+      trend += (snap.trendTarget - trend) * Math.min(1, dt * 2.4);
+      shock *= Math.pow(0.14, dt);
+      logp += (trend + shock) * dt + vol * g() * Math.sqrt(dt) * 0.85;
+      t += dt;
+      out.push({ t, p:Math.exp(logp) });
+    }
+    return out;
+  }
+  slice(from, to){
+    const out = [];
+    for (let i = this.hist.length - 1; i >= 0; i--){
+      const h = this.hist[i];
+      if (h.t < from) break;
+      if (h.t <= to) out.push(h);
+    }
+    return out.reverse();
+  }
+  /* recent slope, for the momentum tape */
+  slope(seconds){
+    const n = this.hist.length;
+    if (n < 4) return 0;
+    const back = this.hist[Math.max(0, n - 1 - Math.round(seconds * 60))];
+    return (this.price / back.p - 1) / seconds;
+  }
+}
+
+/* ---------- the wire ---------------------------------------------------- */
+const WIRE = {
+  bull: [
+    "RATE CUT LANDS EARLY", "BUYBACK DOUBLED", "GUIDANCE RAISED",
+    "SHORTS SQUEEZED OUT", "MERGER CONFIRMED", "SUPPLY DEAL SIGNED",
+    "INDEX INCLUSION GRANTED", "BLOWOUT QUARTER"
+  ],
+  bear: [
+    "SEC OPENS PROBE", "GUIDANCE PULLED", "CFO RESIGNS OVERNIGHT",
+    "RECALL ANNOUNCED", "SHORT REPORT DROPS", "CREDIT LINE FROZEN",
+    "PATENT STRUCK DOWN", "AUDITOR WALKS"
+  ],
+  wild: [
+    "HALT LIFTED, NOBODY KNOWS WHY", "RUMOUR MILL SPINNING",
+    "LEAKED MEMO, UNVERIFIED", "TWO HEADLINES, OPPOSITE STORIES",
+    "LIQUIDITY GONE THIN"
+  ]
+};
+const TAPE_SYMS = ["MNMX","VYRE","KLTA","ORBQ","ZENX","HALO","DRFT","PYRA","CNDL","AXIM","TROV","LUMN"];
+
+function buildNews(rng, day, length, lead){
+  const count = 2 + Math.floor(rng() * 2) + (day > 5 ? 1 : 0);
+  const out = [];
+  for (let i = 0; i < count; i++){
+    const slot = (length - 6) * ((i + 0.5 + rng() * 0.5) / count) + 4;
+    const roll = rng();
+    const kind = roll < 0.42 ? "bull" : roll < 0.84 ? "bear" : "wild";
+    const power = 0.08 + rng() * 0.16 + day * 0.008;
+    out.push({
+      at: slot, lead, kind, power,
+      text: pick(rng, WIRE[kind]),
+      dir: kind === "bull" ? 1 : kind === "bear" ? -1 : (rng() < 0.5 ? 1 : -1),
+      warned: false, fired: false
+    });
+  }
+  return out.sort((a, b) => a.at - b.at);
+}
+
+/* ---------- run state --------------------------------------------------- */
+const G = {
+  screen:"title", day:0, equity:0, dayStart:0, target:0, timeLeft:0,
+  market:null, news:[], pos:null, mods:freshMods(),
+  owned:{}, ownedOrder:[], seed:0,
+  trades:0, winners:0, bestTrade:0, peakEquity:0, swept:0,
+  breakerLeft:0, sniperArmed:false, hedgeLeft:0, parachuteUsed:false,
+  lastTrade:null, banner:null, bannerUntil:0,
+  shake:0, flash:0, flashColor:"#fff",
+  particles:[], floats:[], history:[]
+};
+
+const stakeSize = () => Math.max(0, (G.mods.compound ? G.equity : G.dayStart)) * G.mods.lev;
+
+function pnlRaw(){
+  if (!G.pos) return 0;
+  return G.pos.size * G.pos.dir * (G.market.price / G.pos.entry - 1);
+}
+function pnlAdjust(raw, hold, dir){
+  let v = raw;
+  if (v > 0){
+    v *= G.mods.profitMult;
+    if (dir < 0) v *= G.mods.shortMult;
+    if (G.mods.scalper && hold <= 1.5) v *= (1 + G.mods.scalper);
+    if (G.mods.diamond && hold >= 3.5) v *= (1 + G.mods.diamond);
+    if (G.sniperArmed) v *= 2;
+  } else {
+    v *= G.mods.lossMult;
+  }
+  return v;
+}
+const livePnl = () => G.pos ? pnlAdjust(pnlRaw(), G.market.t - G.pos.t0, G.pos.dir) : 0;
+
+/* ---------- opening and closing ----------------------------------------- */
+function openPos(dir){
+  if (G.screen !== "play" || G.pos || G.timeLeft <= 0) return;
+  const size = stakeSize();
+  if (size <= 0) return;
+  const fee = size * TUNE.spread * G.mods.spreadMult;
+  G.equity -= fee;
+  G.pos = { dir, entry:G.market.price, t0:G.market.t, size, fee };
+  Audio_.blip(dir > 0 ? 520 : 400, 0.06, "square", 0.35);
+  paintTriggers();
+}
+
+function closePos(reason){
+  if (!G.pos) return;
+  const p = G.pos, hold = G.market.t - p.t0;
+  let val = pnlAdjust(pnlRaw(), hold, p.dir);
+  let note = "";
+
+  if (val < 0 && G.hedgeLeft > 0){ G.hedgeLeft--; val = 0; note = "hedged"; }
+  if (val > 0 && G.sniperArmed){ G.sniperArmed = false; note = "sniper"; }
+
+  const rebate = p.size * G.mods.rebate;
+  G.equity += val + rebate;
+  G.pos = null;
+  G.trades++;
+  if (val > 0) G.winners++;
+  if (val > G.bestTrade) G.bestTrade = val;
+  G.lastTrade = { val, hold, dir:p.dir, note, reason };
+
+  const y = priceToY(G.market.price);
+  const x = headX();
+  spawnFloat(x, y, fmtSigned(val), val > 0 ? "#3FE0A8" : val < 0 ? "#FF5A6E" : "#7E86AE");
+  if (note === "sniper") spawnFloat(x, y - 26, "SNIPER ×2", "#F5C453");
+  if (note === "hedged") spawnFloat(x, y - 26, "HEDGED", "#8B6BFF");
+
+  if (val > 0){
+    const heat = clamp(Math.abs(val) / Math.max(1, G.dayStart * 0.5), 0.15, 1);
+    burst(x, y, "#F5C453", 12 + Math.round(heat * 26));
+    G.shake = Math.min(9, 2 + heat * 8);
+    Audio_.blip(620 + clamp(heat, 0, 1) * 500, 0.13, "triangle", 0.5);
+    Audio_.blip(880 + clamp(heat, 0, 1) * 620, 0.1, "sine", 0.3);
+  } else if (val < 0){
+    burst(x, y, "#FF5A6E", 10);
+    G.shake = Math.min(7, 1 + Math.abs(val) / Math.max(1, G.dayStart * 0.5) * 6);
+    Audio_.sweep(300, 120, 0.16, "sawtooth");
+  }
+  paintTriggers();
+}
+
+/* ---------- day lifecycle ----------------------------------------------- */
+function newRun(){
+  G.day = 0;
+  G.equity = TUNE.startEquity;
+  G.peakEquity = TUNE.startEquity;
+  G.mods = freshMods();
+  G.owned = {}; G.ownedOrder = [];
+  G.trades = 0; G.winners = 0; G.bestTrade = 0; G.swept = 0;
+  G.parachuteUsed = false;
+  G.history = [];
+  G.seed = (Math.random() * 1e9) | 0;
+  META.runs++; saveMeta();
+  startDay();
+}
+
+function startDay(){
+  G.day++;
+  G.dayStart = G.equity;
+  G.target = TUNE.targets[G.day - 1];
+  G.pos = null;
+  G.lastTrade = null;
+  G.particles.length = 0; G.floats.length = 0;
+  G.breakerLeft = G.mods.breaker;
+  G.sniperArmed = G.mods.sniper;
+  G.hedgeLeft = G.mods.hedge;
+
+  const vol = (TUNE.baseVol + TUNE.volPerDay * (G.day - 1)) * G.mods.volMult;
+  G.market = new Market(G.seed + G.day * 7919, vol);
+  G.market.newRegime();
+  for (let i = 0; i < TUNE.warmup * 60; i++) G.market.step(1 / 60);
+  G.market.t = 0;
+  for (const h of G.market.hist) h.t -= TUNE.warmup;
+
+  const len = TUNE.dayLength[G.day - 1] + G.mods.extraTime;
+  G.timeLeft = len;
+  G.news = buildNews(mulberry32(G.seed + G.day * 104729), G.day, len, G.mods.warnLead);
+  G.banner = null;
+
+  G.screen = "play";
+  hideVeil();
+  paintHeld();
+  paintTriggers();
+  $("breaker-tag").classList.toggle("on", G.mods.breaker > 0);
+  $("breaker-tag").classList.remove("spent");
+  Audio_.chord([392, 523, 659], 0.35);
+}
+
+function settleDay(){
+  if (G.pos) closePos("bell");
+  G.history.push({ day:G.day, target:G.target, close:G.equity, trades:G.trades });
+  if (G.equity > META.best){ META.best = G.equity; }
+  if (G.day > META.bestDay){ META.bestDay = G.day; }
+  saveMeta();
+
+  if (G.equity >= G.target){
+    if (G.day >= TUNE.targets.length){ G.screen = "won"; META.wins++; saveMeta(); showWin(); }
+    else {
+      /* the desk banks your overshoot: a good day buys a head start, not a fortune */
+      const cap = G.target * TUNE.carryCap;
+      let took = 0;
+      if (G.equity > cap){ took = G.equity - cap; G.swept += took; G.equity = cap; }
+      G.screen = "shop";
+      showShop(false, took);
+    }
+    return;
+  }
+  if (G.mods.parachute > 0 && G.equity >= G.target * 0.75){
+    G.mods.parachute--;
+    const covered = G.target - G.equity;
+    G.equity = G.target;
+    G.screen = "shop";
+    showShop(covered, 0);
+    return;
+  }
+  G.screen = "over";
+  showOver("Quota missed",
+    "You closed the session at " + fmt(G.equity) + " against a " + fmt(G.target) +
+    " quota. The desk reassigns your capital before the bell rings again.");
+}
+
+function marginCall(){
+  const live = livePnl();
+  G.pos = null;
+  if (G.mods.bailout > 0){
+    G.mods.bailout--;
+    G.equity = G.dayStart * 0.30;
+    G.flash = 1; G.flashColor = "#8B6BFF"; G.shake = 12;
+    setBanner("wild", "Bailout wired — you are trading again");
+    Audio_.chord([220, 330, 440], 0.5);
+    paintTriggers();
+    return;
+  }
+  G.equity = Math.max(0, G.equity + live);
+  G.flash = 1; G.flashColor = "#FF5A6E"; G.shake = 14;
+  Audio_.sweep(420, 60, 0.9, "sawtooth");
+  G.screen = "over";
+  showOver("Margin call",
+    "Your account fell through " + Math.round(G.mods.marginAt * 100) + "% of the morning balance and the " +
+    "risk desk closed you out at " + fmt(G.equity) + ". Day " + G.day + " of nine.");
+}
+
+function setBanner(kind, text){
+  G.banner = { kind, text };
+  G.bannerUntil = performance.now() + 2200;
+  const el = $("news");
+  el.className = "on " + kind;
+  $("news-text").textContent = text;
+}
+
+/* ---------- per-frame simulation ---------------------------------------- */
+function stepGame(dt){
+  if (G.screen !== "play"){ if (G.market) G.market.step(dt); return; }   /* the tape runs even behind a veil */
+  const m = G.market;
+  m.step(dt);
+
+  const elapsed = (TUNE.dayLength[G.day - 1] + G.mods.extraTime) - G.timeLeft;
+  for (const n of G.news){
+    if (!n.warned && elapsed >= n.at - n.lead){
+      n.warned = true;
+      const label = n.kind === "bull" ? "▲ " : n.kind === "bear" ? "▼ " : "◆ ";
+      setBanner(n.kind, label + n.text);
+      G.bannerUntil = performance.now() + (n.lead + 1.6) * 1000;
+      Audio_.blip(n.kind === "bull" ? 700 : n.kind === "bear" ? 300 : 500, 0.07, "square", 0.3);
+      Audio_.blip(n.kind === "bull" ? 900 : n.kind === "bear" ? 220 : 500, 0.07, "square", 0.25);
+    }
+    if (!n.fired && elapsed >= n.at){
+      n.fired = true;
+      m.impulse(n.dir, n.power);
+      G.shake = Math.max(G.shake, 6);
+      Audio_.sweep(n.dir > 0 ? 300 : 500, n.dir > 0 ? 700 : 180, 0.3, "square");
+    }
+  }
+  if (G.banner && performance.now() > G.bannerUntil){
+    G.banner = null;
+    $("news").className = "";
+  }
+
+  if (G.pos){
+    const raw = pnlRaw();
+    if (G.mods.stopLoss && raw <= -G.pos.size * G.mods.stopLoss){
+      closePos("stop");
+      spawnFloat(headX(), priceToY(m.price) + 22, "STOPPED OUT", "#8B6BFF");
+    }
+  }
+  if (G.equity + livePnl() <= G.dayStart * G.mods.marginAt){ marginCall(); return; }
+
+  const eq = G.equity + livePnl();
+  if (eq > G.peakEquity) G.peakEquity = eq;
+
+  G.timeLeft -= dt;
+  if (G.timeLeft <= 0){ G.timeLeft = 0; settleDay(); }
+}
+
+/* ---------- canvas ------------------------------------------------------ */
+const cv = $("chart"), cx = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+const PAD_T = 30, PAD_B = 26;
+const view = { lo:95, hi:105, ready:false };
+
+function resize(){
+  const r = cv.getBoundingClientRect();
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = Math.max(1, Math.round(r.width));
+  H = Math.max(1, Math.round(r.height));
+  cv.width = Math.round(W * DPR);
+  cv.height = Math.round(H * DPR);
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener("resize", resize);
+
+const headX = () => W * TUNE.headX;
+function xAt(t){
+  const t0 = G.market ? G.market.t - TUNE.window : 0;
+  return ((t - t0) / TUNE.window) * headX();
+}
+function priceToY(p){
+  const span = Math.max(1e-6, view.hi - view.lo);
+  return PAD_T + (1 - (p - view.lo) / span) * (H - PAD_T - PAD_B);
+}
+function niceStep(raw){
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / mag;
+  return (n < 1.5 ? 1 : n < 3.5 ? 2 : n < 7.5 ? 5 : 10) * mag;
+}
+
+function computeView(pts){
+  let lo = Infinity, hi = -Infinity;
+  for (const p of pts){ if (p.p < lo) lo = p.p; if (p.p > hi) hi = p.p; }
+  if (!isFinite(lo)){ lo = 99; hi = 101; }
+  if (G.pos){ lo = Math.min(lo, G.pos.entry); hi = Math.max(hi, G.pos.entry); }
+  const mid = (lo + hi) / 2, half = Math.max((hi - lo) / 2, mid * 0.006);
+  lo = mid - half * 1.28; hi = mid + half * 1.28;
+  if (!view.ready){ view.lo = lo; view.hi = hi; view.ready = true; }
+  else { view.lo = lerp(view.lo, lo, 0.11); view.hi = lerp(view.hi, hi, 0.11); }
+}
+
+/* ---------- effects ----------------------------------------------------- */
+function burst(x, y, color, n){
+  if (reduceMotion) n = Math.min(n, 6);
+  for (let i = 0; i < n; i++){
+    const a = Math.random() * Math.PI * 2, s = 60 + Math.random() * 340;
+    G.particles.push({
+      x, y, vx:Math.cos(a) * s, vy:Math.sin(a) * s - 60,
+      life:0.5 + Math.random() * 0.6, max:1.1, color,
+      r:1.2 + Math.random() * 2.4
+    });
+  }
+}
+function spawnFloat(x, y, text, color){
+  G.floats.push({ x, y, text, color, life:1.25, max:1.25 });
+}
+function stepEffects(dt){
+  for (let i = G.particles.length - 1; i >= 0; i--){
+    const p = G.particles[i];
+    p.life -= dt;
+    if (p.life <= 0){ G.particles.splice(i, 1); continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.vy += 620 * dt; p.vx *= 0.97; p.vy *= 0.99;
+  }
+  for (let i = G.floats.length - 1; i >= 0; i--){
+    const f = G.floats[i];
+    f.life -= dt;
+    if (f.life <= 0){ G.floats.splice(i, 1); continue; }
+    f.y -= 38 * dt;
+  }
+  G.shake *= Math.pow(0.001, dt);
+  if (G.shake < 0.05) G.shake = 0;
+  G.flash *= Math.pow(0.02, dt);
+  if (G.flash < 0.01) G.flash = 0;
+}
+
+/* ---------- draw -------------------------------------------------------- */
+function tapeColor(){
+  const live = livePnl();
+  if (G.pos) return live >= 0 ? "#3FE0A8" : "#FF5A6E";
+  if (G.mods.momentum && G.market){
+    const s = clamp(G.market.slope(0.7) / 0.05, -1, 1);
+    const up = [63, 224, 168], dn = [255, 90, 110], nt = [245, 196, 83];
+    const mix = s >= 0 ? up : dn;
+    const k = Math.abs(s);
+    return "rgb(" + Math.round(lerp(nt[0], mix[0], k)) + "," +
+                    Math.round(lerp(nt[1], mix[1], k)) + "," +
+                    Math.round(lerp(nt[2], mix[2], k)) + ")";
+  }
+  return "#F5C453";
+}
+
+function draw(){
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  cx.clearRect(0, 0, W, H);
+  if (!G.market) return;
+
+  if (G.shake > 0.05 && !reduceMotion){
+    cx.translate((Math.random() - 0.5) * G.shake, (Math.random() - 0.5) * G.shake);
+  }
+
+  const m = G.market;
+  const pts = m.slice(m.t - TUNE.window, m.t);
+  computeView(pts);
+  const col = tapeColor();
+
+  /* grid */
+  const step = niceStep((view.hi - view.lo) / 4.5);
+  cx.lineWidth = 1;
+  cx.font = "10px 'IBM Plex Mono', monospace";
+  cx.textBaseline = "middle";
+  for (let p = Math.ceil(view.lo / step) * step; p < view.hi; p += step){
+    const y = Math.round(priceToY(p)) + 0.5;
+    cx.strokeStyle = "rgba(35,43,74,.75)";
+    cx.beginPath(); cx.moveTo(0, y); cx.lineTo(W, y); cx.stroke();
+    cx.fillStyle = "rgba(126,134,174,.55)";
+    cx.textAlign = "left";
+    cx.fillText(p.toFixed(step < 1 ? 2 : 1), 6, y - 7);
+  }
+  const tStart = Math.ceil(m.t - TUNE.window);
+  for (let t = tStart; t <= m.t + 3; t += 1){
+    const x = Math.round(xAt(t)) + 0.5;
+    cx.strokeStyle = "rgba(35,43,74,.4)";
+    cx.beginPath(); cx.moveTo(x, PAD_T - 10); cx.lineTo(x, H - PAD_B + 8); cx.stroke();
+  }
+
+  if (pts.length < 2) return;
+
+  /* the shaded book between entry and last, while a position is open */
+  if (G.pos){
+    const yE = priceToY(G.pos.entry);
+    const seg = pts.filter(p => p.t >= G.pos.t0);
+    if (seg.length > 1){
+      cx.beginPath();
+      cx.moveTo(xAt(seg[0].t), yE);
+      for (const p of seg) cx.lineTo(xAt(p.t), priceToY(p.p));
+      cx.lineTo(xAt(seg[seg.length - 1].t), yE);
+      cx.closePath();
+      cx.fillStyle = livePnl() >= 0 ? "rgba(63,224,168,.13)" : "rgba(255,90,110,.13)";
+      cx.fill();
+    }
+    cx.save();
+    cx.setLineDash([5, 5]);
+    cx.strokeStyle = "rgba(230,233,245,.42)";
+    cx.lineWidth = 1;
+    cx.beginPath(); cx.moveTo(0, yE); cx.lineTo(W, yE); cx.stroke();
+    cx.restore();
+    cx.fillStyle = "rgba(230,233,245,.55)";
+    cx.textAlign = "left";
+    cx.fillText((G.pos.dir > 0 ? "LONG " : "SHORT ") + G.pos.entry.toFixed(2), 64, yE + 11);
+  }
+
+  /* area under the tape */
+  const grad = cx.createLinearGradient(0, PAD_T, 0, H - PAD_B);
+  const rgb = col.startsWith("#")
+    ? [parseInt(col.slice(1, 3), 16), parseInt(col.slice(3, 5), 16), parseInt(col.slice(5, 7), 16)]
+    : col.slice(4, -1).split(",").map(Number);
+  grad.addColorStop(0, "rgba(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + ",.20)");
+  grad.addColorStop(1, "rgba(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + ",0)");
+  cx.beginPath();
+  cx.moveTo(xAt(pts[0].t), H - PAD_B);
+  for (const p of pts) cx.lineTo(xAt(p.t), priceToY(p.p));
+  cx.lineTo(xAt(pts[pts.length - 1].t), H - PAD_B);
+  cx.closePath();
+  cx.fillStyle = grad;
+  cx.fill();
+
+  /* the tape itself */
+  cx.beginPath();
+  for (let i = 0; i < pts.length; i++){
+    const x = xAt(pts[i].t), y = priceToY(pts[i].p);
+    if (i === 0) cx.moveTo(x, y); else cx.lineTo(x, y);
+  }
+  cx.strokeStyle = col;
+  cx.lineWidth = 2;
+  cx.lineJoin = "round";
+  cx.lineCap = "round";
+  cx.shadowColor = col;
+  cx.shadowBlur = 14;
+  cx.stroke();
+  cx.shadowBlur = 0;
+
+  /* the insider's ghost */
+  if (G.mods.ghost > 0){
+    const fut = m.peek(G.mods.ghost, 1 / 30);
+    if (fut.length){
+      cx.save();
+      cx.setLineDash([3, 4]);
+      cx.beginPath();
+      cx.moveTo(xAt(m.t), priceToY(m.price));
+      for (const f of fut) cx.lineTo(xAt(f.t), priceToY(f.p));
+      cx.strokeStyle = "rgba(139,107,255,.65)";
+      cx.lineWidth = 1.5;
+      cx.stroke();
+      cx.restore();
+    }
+  }
+
+  /* the head */
+  const hx = xAt(m.t), hy = priceToY(m.price);
+  if (G.pos && !reduceMotion){
+    const pulse = (performance.now() % 900) / 900;
+    cx.beginPath();
+    cx.arc(hx, hy, 5 + pulse * 16, 0, Math.PI * 2);
+    cx.strokeStyle = (livePnl() >= 0 ? "rgba(63,224,168," : "rgba(255,90,110,") + (0.5 * (1 - pulse)) + ")";
+    cx.lineWidth = 1.5;
+    cx.stroke();
+  }
+  cx.beginPath();
+  cx.arc(hx, hy, 4, 0, Math.PI * 2);
+  cx.fillStyle = col;
+  cx.shadowColor = col; cx.shadowBlur = 16;
+  cx.fill();
+  cx.shadowBlur = 0;
+
+  /* last price chip */
+  const label = m.price.toFixed(2);
+  cx.font = "600 12px 'IBM Plex Mono', monospace";
+  const tw = cx.measureText(label).width;
+  const bx = hx + 10, by = hy - 11;
+  cx.fillStyle = "rgba(7,10,20,.9)";
+  cx.strokeStyle = col;
+  cx.lineWidth = 1;
+  roundRect(bx, by, tw + 16, 22, 5);
+  cx.fill(); cx.stroke();
+  cx.fillStyle = col;
+  cx.textAlign = "left";
+  cx.fillText(label, bx + 8, by + 12);
+  if (m.frozen > 0){
+    cx.fillStyle = "rgba(139,107,255,.9)";
+    cx.font = "600 11px 'IBM Plex Mono', monospace";
+    cx.textAlign = "center";
+    cx.fillText("HALTED " + m.frozen.toFixed(1) + "s", W / 2, PAD_T + 4);
+  }
+
+  /* effects */
+  for (const p of G.particles){
+    const a = clamp(p.life / p.max, 0, 1);
+    cx.globalAlpha = a;
+    cx.fillStyle = p.color;
+    cx.beginPath(); cx.arc(p.x, p.y, p.r, 0, Math.PI * 2); cx.fill();
+  }
+  cx.globalAlpha = 1;
+  cx.font = "600 15px 'IBM Plex Mono', monospace";
+  cx.textAlign = "center";
+  for (const f of G.floats){
+    const a = clamp(f.life / f.max, 0, 1);
+    cx.globalAlpha = a;
+    cx.fillStyle = f.color;
+    cx.shadowColor = "rgba(0,0,0,.8)"; cx.shadowBlur = 6;
+    cx.fillText(f.text, f.x, f.y);
+    cx.shadowBlur = 0;
+  }
+  cx.globalAlpha = 1;
+
+  if (G.flash > 0.01){
+    cx.globalAlpha = G.flash * 0.45;
+    cx.fillStyle = G.flashColor;
+    cx.fillRect(-20, -20, W + 40, H + 40);
+    cx.globalAlpha = 1;
+  }
+}
+
+function roundRect(x, y, w, h, r){
+  cx.beginPath();
+  cx.moveTo(x + r, y);
+  cx.arcTo(x + w, y, x + w, y + h, r);
+  cx.arcTo(x + w, y + h, x, y + h, r);
+  cx.arcTo(x, y + h, x, y, r);
+  cx.arcTo(x, y, x + w, y, r);
+  cx.closePath();
+}
+
+/* ---------- HUD --------------------------------------------------------- */
+const el = {
+  day:$("v-day"), target:$("v-target"), clock:$("v-clock"), equity:$("v-equity"),
+  pnl:$("v-pnl"), pos:$("v-pos"), stake:$("v-stake"), lev:$("v-lev"), last:$("v-last"),
+  fill:$("progfill"), bar:$("progbar"), held:$("held"),
+  bLong:$("btn-long"), bShort:$("btn-short"), veil:$("veil"), veilBody:$("veil-body")
+};
+
+function paintHUD(){
+  const live = livePnl();
+  const eq = G.equity + live;
+  el.day.innerHTML = G.day + "<span class='haze'>/9</span>";
+  el.target.textContent = fmt(G.target);
+  el.equity.textContent = fmt(eq);
+  el.clock.textContent = Math.floor(G.timeLeft / 60) + ":" + String(Math.floor(G.timeLeft % 60)).padStart(2, "0");
+  el.clock.style.color = G.timeLeft <= 6 && G.screen === "play" ? "#FF5A6E" : "";
+
+  const span = Math.max(1, G.target - G.dayStart);
+  const p = G.dayStart >= G.target ? 1 : clamp((eq - G.dayStart) / span, 0, 1);
+  el.fill.style.transform = "scaleX(" + p + ")";
+  el.bar.classList.toggle("hit", eq >= G.target);
+
+  el.stake.textContent = fmt(stakeSize());
+  el.lev.textContent = G.mods.lev.toFixed(1) + "×";
+  if (G.pos){
+    el.pnl.textContent = fmtSigned(live);
+    el.pnl.className = "v " + (live >= 0 ? "pos-up" : "pos-dn");
+    el.pos.textContent = G.pos.dir > 0 ? "Long" : "Short";
+    el.pos.className = "v " + (G.pos.dir > 0 ? "pos-up" : "pos-dn");
+  } else {
+    el.pnl.textContent = "—";
+    el.pnl.className = "v pos-flat";
+    el.pos.textContent = "Flat";
+    el.pos.className = "v pos-flat";
+  }
+  if (G.lastTrade){
+    el.last.textContent = fmtSigned(G.lastTrade.val);
+    el.last.className = "v " + (G.lastTrade.val > 0 ? "pos-up" : G.lastTrade.val < 0 ? "pos-dn" : "pos-flat");
+  }
+}
+function paintTriggers(){
+  el.bLong.classList.toggle("armed", !!G.pos && G.pos.dir > 0);
+  el.bShort.classList.toggle("armed", !!G.pos && G.pos.dir < 0);
+}
+function paintHeld(){
+  const bits = [];
+  if (G.sniperArmed) bits.push('<span class="chip"><span class="g">◆</span>Sniper armed</span>');
+  if (G.hedgeLeft > 0) bits.push('<span class="chip"><span class="g">◆</span>Hedge ×' + G.hedgeLeft + "</span>");
+  for (const id of G.ownedOrder){
+    const u = UPGRADES.find(x => x.id === id), n = G.owned[id];
+    bits.push('<span class="chip"><span class="g">▪</span>' + u.name + (n > 1 ? " ×" + n : "") + "</span>");
+  }
+  el.held.innerHTML = bits.join("");
+}
+
+/* ---------- overlays ---------------------------------------------------- */
+function showVeil(html){
+  el.veilBody.innerHTML = html;
+  el.veil.classList.add("on");
+  const b = el.veilBody.querySelector("button");
+  if (b) setTimeout(() => b.focus(), 60);
+}
+function hideVeil(){ el.veil.classList.remove("on"); }
+
+function ledgerHTML(){
+  if (!G.history.length) return "";
+  const rows = G.history.map(h =>
+    "<tr><td>Session " + h.day + " · quota " + fmt(h.target) + "</td><td>" + fmt(h.close) + "</td></tr>").join("");
+  return "<table class='ledger'>" + rows +
+    "<tr><td>Trades taken</td><td>" + G.trades + (G.trades ? " · " + Math.round(G.winners / G.trades * 100) + "% green" : "") + "</td></tr>" +
+    "<tr><td>Best single trade</td><td class='gold'>" + fmt(G.bestTrade) + "</td></tr>" +
+    (G.swept > 0 ? "<tr><td>Swept by the desk</td><td class='haze'>" + fmt(G.swept) + "</td></tr>" : "") +
+    "</table>";
+}
+
+function showTitle(){
+  G.screen = "title";
+  const best = META.best > 0
+    ? "Your best desk balance so far is <b>" + fmt(META.best) + "</b>, reached on session " + META.bestDay + "."
+    : "Nobody has traded this desk yet.";
+  showVeil(
+    '<div class="card">' +
+      '<p class="eyebrow">Nine sessions · one number</p>' +
+      '<h1>Turn <em>$1,000</em><br>into a million.</h1>' +
+      '<p class="lede">You get one live tape and a leveraged account. Hold a position while the price runs your way, ' +
+      'let go before it turns. Clear each session&rsquo;s quota or the desk takes your capital back. ' + best + '</p>' +
+      '<div class="rules">' +
+        '<div class="rule"><span class="n">HOLD TO TRADE</span><p><kbd>W</kbd> <kbd>↑</kbd> <kbd>space</kbd> holds a long. ' +
+          '<kbd>S</kbd> <kbd>↓</kbd> holds a short. Let go to close and bank it.</p></div>' +
+        '<div class="rule"><span class="n">THE WIRE WARNS YOU</span><p>Headlines break a second before they hit the tape, ' +
+          'and they tell you which way. That second is the whole game.</p></div>' +
+        '<div class="rule"><span class="n">THE DESK SELLS EDGE</span><p>Clear a quota and pick an upgrade. ' +
+          'Leverage, tempo bonuses, a stop loss — or just take the cash.</p></div>' +
+        '<div class="rule"><span class="n">DON&rsquo;T BLOW UP</span><p>Fall through 25% of your morning balance ' +
+          'and the risk desk closes you out. Run over.</p></div>' +
+        '<div class="rule"><span class="n">THE DESK SWEEPS</span><p>Anything above 125% of a quota is banked by the ' +
+          'firm overnight. A monster session buys a head start, never a free ride.</p></div>' +
+      '</div>' +
+      '<div class="row"><button class="cta" id="go">Ring the bell →</button>' +
+      '<span class="haze mono" style="font-size:11.5px">' + META.runs + ' runs · ' + META.wins + ' millions</span></div>' +
+    "</div>");
+  $("go").onclick = () => { Audio_.boot(); newRun(); };
+}
+
+function weightedSample(pool, n){
+  const out = [], src = pool.slice();
+  while (out.length < n && src.length){
+    let total = 0;
+    for (const u of src) total += (u.weight || 5);
+    let r = Math.random() * total, idx = 0;
+    for (let i = 0; i < src.length; i++){
+      r -= (src[i].weight || 5);
+      if (r <= 0){ idx = i; break; }
+    }
+    out.push(src.splice(idx, 1)[0]);
+  }
+  return out;
+}
+
+function showShop(covered, took){
+  const pool = UPGRADES.filter(u => (u.minDay || 1) <= G.day + 1 && (G.owned[u.id] || 0) < u.max);
+  const offers = weightedSample(pool, 3);
+  const cash = Math.round(G.equity * 0.08);
+
+  const cards = offers.map((u, i) =>
+    '<button class="offer' + (u.rare ? " rare" : "") + '" data-i="' + i + '">' +
+      '<span class="tag">' + (u.rare ? "Rare · " : "") + u.tag + "</span>" +
+      '<span class="nm">' + u.name + "</span>" +
+      '<p class="ds">' + u.desc + "</p>" +
+      '<span class="own">' + (G.owned[u.id] ? "held ×" + G.owned[u.id] + " · " : "") + "max " + u.max + "</span>" +
+    "</button>").join("") +
+    '<button class="offer" data-cash="1">' +
+      '<span class="tag">Cash</span><span class="nm">Take the money</span>' +
+      '<p class="ds">Skip the upgrade and book ' + fmt(cash) + " straight into the account — 8% of your balance.</p>" +
+      '<span class="own">always available</span>' +
+    "</button>";
+
+  const sweptLine = took > 0
+    ? " The desk swept <b>" + fmt(took) + "</b> off the top and left you " + fmt(G.equity) + " to trade."
+    : "";
+  const note = covered
+    ? '<p class="lede">The parachute opened. The desk quietly covered ' + fmt(covered) +
+      " and nobody wrote it down.</p>"
+    : '<p class="lede">Session ' + G.day + " cleared." + sweptLine +
+      " Tomorrow the number is <b>" + fmt(TUNE.targets[G.day]) + "</b>.</p>";
+
+  showVeil(
+    '<div class="card">' +
+      '<p class="eyebrow">The desk · after hours</p>' +
+      "<h2>Pick your edge.</h2>" + note +
+      '<div class="offers">' + cards + "</div>" +
+    "</div>");
+
+  el.veilBody.querySelectorAll(".offer").forEach(btn => {
+    btn.onclick = () => {
+      if (btn.dataset.cash){
+        G.equity += cash;
+        Audio_.chord([523, 659, 784], 0.4);
+      } else {
+        const u = offers[+btn.dataset.i];
+        u.apply(G.mods);
+        G.owned[u.id] = (G.owned[u.id] || 0) + 1;
+        if (!G.ownedOrder.includes(u.id)) G.ownedOrder.push(u.id);
+        Audio_.chord([440, 587, 880], 0.4);
+      }
+      startDay();
+    };
+  });
+}
+
+function showOver(title, body){
+  showVeil(
+    '<div class="card">' +
+      '<p class="eyebrow">Run closed · session ' + G.day + " of 9</p>" +
+      "<h2>" + title + ".</h2>" +
+      '<p class="lede">' + body + "</p>" +
+      ledgerHTML() +
+      '<div class="row"><button class="cta" id="again">Trade again →</button>' +
+      '<button class="cta ghost" id="home">Back to the front</button>' +
+      '<span class="haze mono" style="font-size:11.5px">peak ' + fmt(G.peakEquity) + "</span></div>" +
+    "</div>");
+  $("again").onclick = newRun;
+  $("home").onclick = showTitle;
+}
+
+function showWin(){
+  G.flash = 1; G.flashColor = "#F5C453"; G.shake = 16;
+  for (let i = 0; i < 6; i++){
+    setTimeout(() => burst(W * (0.2 + Math.random() * 0.6), H * (0.2 + Math.random() * 0.5), "#F5C453", 40), i * 160);
+  }
+  Audio_.chord([523, 659, 784, 1046, 1318], 0.7);
+  showVeil(
+    '<div class="card">' +
+      '<p class="eyebrow">Nine sessions · quota cleared</p>' +
+      "<h2>You made the number.</h2>" +
+      '<div class="figure">' + fmt(G.equity) + "</div>" +
+      '<p class="lede" style="margin-top:14px">Started with a thousand dollars and a rented terminal. ' +
+      "The desk will not say congratulations — it will only raise the quota.</p>" +
+      ledgerHTML() +
+      '<div class="row"><button class="cta" id="again">Run it back →</button>' +
+      '<button class="cta ghost" id="home">Back to the front</button></div>' +
+    "</div>");
+  $("again").onclick = newRun;
+  $("home").onclick = showTitle;
+}
+
+/* ---------- input ------------------------------------------------------- */
+const held = { long:false, short:false };
+function applyIntent(){
+  let d = 0;
+  if (held.long && !held.short) d = 1;
+  else if (held.short && !held.long) d = -1;
+  else if (held.long && held.short) d = G.pos ? G.pos.dir : 0;
+  if (G.screen !== "play") return;
+  if (d === 0){ if (G.pos) closePos("manual"); return; }
+  if (G.pos){
+    if (G.pos.dir === d) return;
+    closePos("flip");
+  }
+  openPos(d);
+}
+function useBreaker(){
+  if (G.screen !== "play" || G.breakerLeft <= 0 || G.market.frozen > 0) return;
+  G.breakerLeft--;
+  G.market.frozen = 2.5;
+  $("breaker-tag").classList.toggle("spent", G.breakerLeft <= 0);
+  setBanner("wild", "◆ Trading halted");
+  Audio_.sweep(180, 900, 0.35, "sine");
+}
+
+const LONG_KEYS = ["KeyW", "ArrowUp", "Space"];
+const SHORT_KEYS = ["KeyS", "ArrowDown"];
+window.addEventListener("keydown", e => {
+  Audio_.boot();
+  if (e.repeat) return;
+  if (G.screen !== "play") return;
+  if (LONG_KEYS.includes(e.code)){ e.preventDefault(); held.long = true; applyIntent(); }
+  else if (SHORT_KEYS.includes(e.code)){ e.preventDefault(); held.short = true; applyIntent(); }
+  else if (e.code === "KeyQ"){ e.preventDefault(); useBreaker(); }
+});
+window.addEventListener("keyup", e => {
+  if (LONG_KEYS.includes(e.code)){ held.long = false; applyIntent(); }
+  else if (SHORT_KEYS.includes(e.code)){ held.short = false; applyIntent(); }
+});
+window.addEventListener("blur", () => { held.long = held.short = false; applyIntent(); });
+
+function bindTrigger(node, key){
+  const down = e => { e.preventDefault(); Audio_.boot(); held[key] = true; applyIntent(); };
+  const up = e => { e.preventDefault(); held[key] = false; applyIntent(); };
+  node.addEventListener("pointerdown", down);
+  node.addEventListener("pointerup", up);
+  node.addEventListener("pointercancel", up);
+  node.addEventListener("pointerleave", up);
+  node.addEventListener("contextmenu", e => e.preventDefault());
+}
+bindTrigger(el.bLong, "long");
+bindTrigger(el.bShort, "short");
+$("breaker-tag").addEventListener("pointerdown", e => { e.preventDefault(); useBreaker(); });
+
+$("btn-sound").onclick = () => {
+  META.sound = !META.sound; saveMeta();
+  Audio_.boot();
+  Audio_.on = META.sound;
+  $("btn-sound").style.color = META.sound ? "" : "#3B4266";
+  $("wave1").style.opacity = $("wave2").style.opacity = META.sound ? 1 : 0.15;
+  if (META.sound) Audio_.blip(660, 0.08, "triangle", 0.4);
+};
+
+/* ---------- ticker tape ------------------------------------------------- */
+let tapeX = 0, tapeW = 0;
+function buildTape(){
+  const rng = mulberry32((G.seed || 1) + 17);
+  const one = TAPE_SYMS.map(s => {
+    const px = (8 + rng() * 400).toFixed(2);
+    const ch = (rng() * 12 - 6);
+    const cls = ch >= 0 ? "up" : "dn";
+    return "<span><b>" + s + "</b> " + px + ' <span class="' + cls + '">' +
+      (ch >= 0 ? "▲" : "▼") + Math.abs(ch).toFixed(2) + "%</span></span>";
+  }).join("");
+  $("tape-track").innerHTML = one + one;
+  tapeW = $("tape-track").scrollWidth / 2;
+}
+function stepTape(dt){
+  if (reduceMotion || !tapeW) return;
+  tapeX -= 34 * dt;
+  if (tapeX <= -tapeW) tapeX += tapeW;
+  $("tape-track").style.transform = "translateX(" + tapeX.toFixed(1) + "px)";
+}
+
+/* ---------- main loop --------------------------------------------------- */
+let acc = 0, prev = performance.now();
+function frame(now){
+  const dt = Math.min(0.25, (now - prev) / 1000);
+  prev = now;
+  acc += dt;
+  const step = 1 / 60;
+  let guard = 0;
+  while (acc >= step && guard++ < 6){
+    stepGame(step);
+    stepEffects(step);
+    acc -= step;
+  }
+  stepTape(dt);
+  draw();
+  paintHUD();
+  requestAnimationFrame(frame);
+}
+
+/* ---------- boot -------------------------------------------------------- */
+resize();
+G.seed = (Math.random() * 1e9) | 0;
+G.market = new Market(G.seed, TUNE.baseVol);
+G.market.newRegime();
+for (let i = 0; i < TUNE.warmup * 60; i++) G.market.step(1 / 60);
+G.target = TUNE.targets[0];
+G.equity = TUNE.startEquity;
+G.dayStart = TUNE.startEquity;
+G.day = 1;
+buildTape();
+$("wave1").style.opacity = $("wave2").style.opacity = META.sound ? 1 : 0.15;
+$("btn-sound").style.color = META.sound ? "" : "#3B4266";
+showTitle();
+requestAnimationFrame(frame);
+</script>
