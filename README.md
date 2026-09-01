@@ -34,10 +34,24 @@ session compounds into numbers that make every later quota irrelevant. With it,
 a monster session buys a head start, never a free ride, and every day stays a
 real test.
 
-**The desk.** Twenty upgrades across size, tempo, execution, risk, income and
-information. They stack, they interact, and several are deliberately double-edged:
-leverage and Volatility Swap both raise your ceiling and measurably lower your
-survival odds.
+**The desk.** Twenty-eight upgrades across size, tempo, execution, risk, income,
+economy and information. They stack, they interact, and several are deliberately
+double-edged: leverage and Volatility Swap both raise your ceiling and measurably
+lower your survival odds. Tax Haven widens the sweep itself, from 125% of quota to
+225% fully stacked, which bends the whole economy in your favour.
+
+**The book.** Every session after the first runs under a condition you choose at the
+desk — Quiet Book, Chop, Trend Day, Thin Liquidity, Heavy Wire, The Grind. Conditions
+never move the quota; they change the shape of the tape. Chop suits a scalping kit and
+starves a swing kit, Trend Day does the reverse, Heavy Wire doubles the headlines and
+so rewards anyone who built for the wire. So the shop is two decisions, not one: what
+edge you buy, and what market you take it into.
+
+Session one is always the Quiet Book, at a $1,050 quota and a long clock. It is the
+on-ramp, and roughly 95% of runs survive it.
+
+Clear session nine and you can stop at the million or keep trading — the quota keeps
+multiplying by 2.8 and the only thing left is the number you stopped at.
 
 ## Tuning
 
@@ -51,11 +65,12 @@ Resulting ladder, and what each session actually demands of you:
 
 | Session | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
 |---|---|---|---|---|---|---|---|---|---|
-| Quota | $1,100 | $1,650 | $2,800 | $5,500 | $12,000 | $30,000 | $85,000 | $280,000 | $1,000,000 |
-| You must make | 1.10× | 1.20× | 1.36× | 1.57× | 1.75× | 2.00× | 2.27× | 2.64× | 2.86× |
+| Quota | $1,050 | $1,600 | $2,800 | $5,500 | $12,000 | $30,000 | $85,000 | $280,000 | $1,000,000 |
+| You must make | 1.05× | 1.22× | 1.40× | 1.57× | 1.75× | 2.00× | 2.27× | 2.64× | 2.86× |
 
-Measured run win rates: **~30%** for a sharp player, **~13%** for a competent one,
-**~3%** for a sloppy one. Builds differentiate by playstyle rather than dominating —
+Measured run win rates: **~32%** for a sharp player, **~16%** for a competent one,
+**~5%** for a sloppy one. Session-one clear rate is ~95% at every skill level; the
+curve for a sloppy player falls to ~60% by session nine. Builds differentiate by playstyle rather than dominating —
 a scalping kit lifts a fast in-and-out player from 75% to 82% per session and *hurts*
 a swing player, while the leverage and volatility upgrades trade win rate for ceiling.
 

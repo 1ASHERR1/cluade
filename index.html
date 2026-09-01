@@ -267,6 +267,13 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 .offer .nm{font-family:var(--f-display);font-size:25px;line-height:1.05}
 .offer .ds{font-size:13px;color:#A6ADD0;margin:0;line-height:1.45;flex:1}
 .offer .own{font-family:var(--f-data);font-size:10.5px;color:var(--haze)}
+.offer.cond{border-color:rgba(63,224,168,.28)}
+.offer.cond .tag{color:var(--mint)}
+.offer.cond:hover{border-color:var(--mint)}
+.chip.cond{border-color:rgba(63,224,168,.4);color:#9BEFD0}
+.chip.cond .g{color:var(--mint)}
+.chip.hot{border-color:rgba(245,196,83,.45);color:var(--gold-2)}
+.chip.hot .g{color:var(--gold)}
 
 /* run summary table */
 .ledger{width:100%;border-collapse:collapse;font-family:var(--f-data);font-size:13px;margin:18px 0}
@@ -395,8 +402,8 @@ button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
 /* ---------- tuning ------------------------------------------------------ */
 const TUNE = {
   startEquity : 1000,
-  targets     : [1100, 1650, 2800, 5500, 12000, 30000, 85000, 280000, 1000000],
-  dayLength   : [38, 38, 40, 40, 42, 42, 44, 46, 50],
+  targets     : [1050, 1600, 2800, 5500, 12000, 30000, 85000, 280000, 1000000],
+  dayLength   : [48, 42, 40, 40, 42, 42, 44, 46, 50],
   baseLeverage: 4,
   spread      : 0.0009,   // charged on entry, as a fraction of position size
   marginCall  : 0.25,     // liquidate below this fraction of the morning balance
@@ -405,6 +412,7 @@ const TUNE = {
   baseVol     : 0.022,    // per root-second
   volPerDay   : 0.0022,
   headX       : 0.79,     // where "now" sits across the canvas
+  endlessStep : 2.8,      // after the million, the desk just keeps raising the number
   carryCap    : 1.25,     // the desk sweeps anything above this multiple of the quota you cleared
 };
 
@@ -560,15 +568,52 @@ const UPGRADES = [
     apply:m => { m.parachute += 1; } },
   { id:"insider",  name:"Insider Line",    tag:"Info",      max:2, weight:3, minDay:4, rare:true,
     desc:"A ghost of the next 0.8 seconds is drawn ahead of the tape. Nobody asks how.",
-    apply:m => { m.ghost += 0.8; } }
+    apply:m => { m.ghost += 0.8; } },
+
+  { id:"trail",    name:"Trailing Stop",   tag:"Risk",      max:1, weight:7,
+    desc:"A winning position closes itself once it gives back 40% of its best.",
+    apply:m => { m.trail = 0.40; } },
+  { id:"openbell", name:"Opening Bell",    tag:"Tempo",     max:2, weight:7,
+    desc:"Winning trades opened in the first 10 seconds pay +40%.",
+    apply:m => { m.openBell += 0.40; } },
+  { id:"closebell",name:"Closing Bell",    tag:"Tempo",     max:2, weight:7,
+    desc:"Winning trades closed in the last 10 seconds pay +50%.",
+    apply:m => { m.closeBell += 0.50; } },
+  { id:"contra",   name:"Contrarian",      tag:"Direction", max:2, weight:6, minDay:2,
+    desc:"Winning trades opened against the tape's current trend pay +40%.",
+    apply:m => { m.contrarian += 0.40; } },
+  { id:"streak",   name:"Hot Streak",      tag:"Tempo",     max:2, weight:6, minDay:2,
+    desc:"Each winner in a row pays +12% more, up to +60%. One loss resets it.",
+    apply:m => { m.streakPer += 0.12; m.streakCap += 0.60; } },
+  { id:"newstrade",name:"News Trader",     tag:"Info",      max:2, weight:6, minDay:2,
+    desc:"Winning trades closed within 2s of a headline hitting pay +45%.",
+    apply:m => { m.newsTrade += 0.45; } },
+  { id:"rebate",   name:"Liquidity Rebate",tag:"Execution", max:1, weight:6,
+    desc:"Your entry cost is handed back on every winning trade.",
+    apply:m => { m.feeRefund = true; } },
+  { id:"haven",    name:"Tax Haven",       tag:"Economy",   max:2, weight:5, minDay:3, rare:true,
+    desc:"The desk sweeps at 175% of quota instead of 125%. You keep far more overnight.",
+    apply:m => { m.sweepBonus += 0.50; } }
 ];
+
+/* The nine quotas are authored; past that the desk just keeps multiplying. */
+function targetFor(day){
+  if (day <= TUNE.targets.length) return TUNE.targets[day - 1];
+  const over = day - TUNE.targets.length;
+  return Math.round(TUNE.targets[TUNE.targets.length - 1] * Math.pow(TUNE.endlessStep, over));
+}
+function dayLengthFor(day){
+  return TUNE.dayLength[Math.min(day, TUNE.dayLength.length) - 1];
+}
 
 function freshMods(){
   return {
     lev:TUNE.baseLeverage, spreadMult:1, scalper:0, diamond:0, shortMult:1,
     lossMult:1, profitMult:1, volMult:1, stopLoss:0, breaker:0, rebate:0,
     extraTime:0, hedge:0, warnLead:1.3, ghost:0, momentum:false, compound:false,
-    sniper:false, bailout:0, parachute:0, marginAt:TUNE.marginCall
+    sniper:false, bailout:0, parachute:0, marginAt:TUNE.marginCall,
+    trail:0, openBell:0, closeBell:0, contrarian:0, streakPer:0, streakCap:0,
+    newsTrade:0, feeRefund:false, sweepBonus:0
   };
 }
 
@@ -577,7 +622,9 @@ const TRENDS = [-0.050, -0.035, -0.035, -0.022, -0.022, -0.010, -0.010, 0, 0,
                  0.010,  0.010,  0.022,  0.022,  0.035,  0.035,  0.050];
 
 class Market {
-  constructor(seed, vol){
+  constructor(seed, vol, cond){
+    this.trendMult = cond ? cond.trendMult : 1;
+    this.regimeMult = cond ? cond.regimeMult : 1;
     this.rng = mulberry32(seed);
     this.gauss = makeGauss(this.rng);
     this.base = 100;
@@ -595,9 +642,9 @@ class Market {
     this.hist = [];
   }
   newRegime(){
-    this.trendTarget = pick(this.rng, TRENDS);
+    this.trendTarget = pick(this.rng, TRENDS) * this.trendMult;
     this.volTarget = this.vol * (0.65 + this.rng() * 0.95);
-    this.regimeIn = 2.0 + this.rng() * 3.5;
+    this.regimeIn = (2.0 + this.rng() * 3.5) * this.regimeMult;
   }
   /* an event kicks the tape and colours the next few seconds */
   impulse(dir, power){
@@ -662,6 +709,25 @@ class Market {
   }
 }
 
+/* ---------- tomorrow's book --------------------------------------------- */
+/* Every session runs under a condition. They never touch the quota - they
+   change the SHAPE of the tape, so which one suits you depends on your build.
+   You pick one at the desk, which makes the shop two real decisions. */
+const CONDITIONS = [
+  { id:"quiet", name:"Quiet Book",     note:"Small, steady legs and a slow wire. Nothing gets away from you.",
+    vol:0.80, trendMult:0.95, regimeMult:1.15, newsMult:0.6 },
+  { id:"chop",  name:"Chop",           note:"Constant reversals, short legs. Scalpers eat; swingers starve.",
+    vol:1.05, trendMult:0.80, regimeMult:0.50, newsMult:1.0 },
+  { id:"trend", name:"Trend Day",      note:"Long legs, few turns. Patience pays and hesitation costs.",
+    vol:0.90, trendMult:1.30, regimeMult:1.80, newsMult:0.8 },
+  { id:"thin",  name:"Thin Liquidity", note:"Bigger swings in both directions. Everything is louder.",
+    vol:1.40, trendMult:1.05, regimeMult:1.00, newsMult:1.0 },
+  { id:"wire",  name:"Heavy Wire",     note:"Twice the headlines - and twice the warnings, if you can use them.",
+    vol:1.00, trendMult:1.00, regimeMult:1.00, newsMult:2.1 },
+  { id:"grind", name:"The Grind",      note:"A quiet tape with stubborn drift. Slow, one-directional money.",
+    vol:0.72, trendMult:1.45, regimeMult:1.50, newsMult:0.7 }
+];
+
 /* ---------- the wire ---------------------------------------------------- */
 const WIRE = {
   bull: [
@@ -682,8 +748,8 @@ const WIRE = {
 };
 const TAPE_SYMS = ["MNMX","VYRE","KLTA","ORBQ","ZENX","HALO","DRFT","PYRA","CNDL","AXIM","TROV","LUMN"];
 
-function buildNews(rng, day, length, lead){
-  const count = 2 + Math.floor(rng() * 2) + (day > 5 ? 1 : 0);
+function buildNews(rng, day, length, lead, newsMult){
+  const count = Math.max(1, Math.round((2 + Math.floor(rng() * 2) + (day > 5 ? 1 : 0)) * (newsMult || 1)));
   const out = [];
   for (let i = 0; i < count; i++){
     const slot = (length - 6) * ((i + 0.5 + rng() * 0.5) / count) + 4;
@@ -707,6 +773,7 @@ const G = {
   owned:{}, ownedOrder:[], seed:0,
   trades:0, winners:0, bestTrade:0, peakEquity:0, swept:0,
   breakerLeft:0, sniperArmed:false, hedgeLeft:0, parachuteUsed:false,
+  streak:0, lastNewsAt:-99, condition:CONDITIONS[0], nextCondition:null, endless:false,
   lastTrade:null, banner:null, bannerUntil:0,
   shake:0, flash:0, flashColor:"#fff",
   particles:[], floats:[], history:[]
@@ -718,20 +785,26 @@ function pnlRaw(){
   if (!G.pos) return 0;
   return G.pos.size * G.pos.dir * (G.market.price / G.pos.entry - 1);
 }
-function pnlAdjust(raw, hold, dir){
+function pnlAdjust(raw, pos){
+  const hold = G.market.t - pos.t0;
   let v = raw;
   if (v > 0){
     v *= G.mods.profitMult;
-    if (dir < 0) v *= G.mods.shortMult;
+    if (pos.dir < 0) v *= G.mods.shortMult;
     if (G.mods.scalper && hold <= 1.5) v *= (1 + G.mods.scalper);
     if (G.mods.diamond && hold >= 3.5) v *= (1 + G.mods.diamond);
+    if (G.mods.openBell && pos.atElapsed <= 10) v *= (1 + G.mods.openBell);
+    if (G.mods.closeBell && G.timeLeft <= 10) v *= (1 + G.mods.closeBell);
+    if (G.mods.contrarian && pos.against) v *= (1 + G.mods.contrarian);
+    if (G.mods.newsTrade && G.lastNewsAt >= 0 && G.market.t - G.lastNewsAt <= 2) v *= (1 + G.mods.newsTrade);
+    if (G.mods.streakPer) v *= (1 + Math.min(G.mods.streakCap, G.streak * G.mods.streakPer));
     if (G.sniperArmed) v *= 2;
   } else {
     v *= G.mods.lossMult;
   }
   return v;
 }
-const livePnl = () => G.pos ? pnlAdjust(pnlRaw(), G.market.t - G.pos.t0, G.pos.dir) : 0;
+const livePnl = () => G.pos ? pnlAdjust(pnlRaw(), G.pos) : 0;
 
 /* ---------- opening and closing ----------------------------------------- */
 function openPos(dir){
@@ -740,7 +813,12 @@ function openPos(dir){
   if (size <= 0) return;
   const fee = size * TUNE.spread * G.mods.spreadMult;
   G.equity -= fee;
-  G.pos = { dir, entry:G.market.price, t0:G.market.t, size, fee };
+  const trend = G.market.slope(0.7);
+  G.pos = {
+    dir, entry:G.market.price, t0:G.market.t, size, fee, peak:0,
+    atElapsed: dayLengthFor(G.day) + G.mods.extraTime - G.timeLeft,
+    against: Math.abs(trend) > 0.004 && Math.sign(trend) !== dir
+  };
   Audio_.blip(dir > 0 ? 520 : 400, 0.06, "square", 0.35);
   paintTriggers();
 }
@@ -748,25 +826,30 @@ function openPos(dir){
 function closePos(reason){
   if (!G.pos) return;
   const p = G.pos, hold = G.market.t - p.t0;
-  let val = pnlAdjust(pnlRaw(), hold, p.dir);
+  let val = pnlAdjust(pnlRaw(), p);
   let note = "";
 
   if (val < 0 && G.hedgeLeft > 0){ G.hedgeLeft--; val = 0; note = "hedged"; }
   if (val > 0 && G.sniperArmed){ G.sniperArmed = false; note = "sniper"; }
 
-  const rebate = p.size * G.mods.rebate;
+  const streakBonus = G.mods.streakPer && val > 0 && G.streak > 0;
+  if (val > 0) G.streak++; else if (val < 0) G.streak = 0;
+
+  const rebate = p.size * G.mods.rebate + (G.mods.feeRefund && val > 0 ? p.fee : 0);
   G.equity += val + rebate;
   G.pos = null;
   G.trades++;
   if (val > 0) G.winners++;
   if (val > G.bestTrade) G.bestTrade = val;
   G.lastTrade = { val, hold, dir:p.dir, note, reason };
+  if (streakBonus && !note) note = G.lastTrade.note = "streak";
 
   const y = priceToY(G.market.price);
   const x = headX();
   spawnFloat(x, y, fmtSigned(val), val > 0 ? "#3FE0A8" : val < 0 ? "#FF5A6E" : "#7E86AE");
   if (note === "sniper") spawnFloat(x, y - 26, "SNIPER ×2", "#F5C453");
   if (note === "hedged") spawnFloat(x, y - 26, "HEDGED", "#8B6BFF");
+  if (note === "streak") spawnFloat(x, y - 26, "STREAK ×" + G.streak, "#F5C453");
 
   if (val > 0){
     const heat = clamp(Math.abs(val) / Math.max(1, G.dayStart * 0.5), 0.15, 1);
@@ -790,6 +873,7 @@ function newRun(){
   G.mods = freshMods();
   G.owned = {}; G.ownedOrder = [];
   G.trades = 0; G.winners = 0; G.bestTrade = 0; G.swept = 0;
+  G.endless = false; G.nextCondition = null; G.streak = 0;
   G.parachuteUsed = false;
   G.history = [];
   G.seed = (Math.random() * 1e9) | 0;
@@ -800,7 +884,11 @@ function newRun(){
 function startDay(){
   G.day++;
   G.dayStart = G.equity;
-  G.target = TUNE.targets[G.day - 1];
+  G.target = targetFor(G.day);
+  G.condition = G.nextCondition || CONDITIONS[0];   /* session one is always the quiet book */
+  G.nextCondition = null;
+  G.streak = 0;
+  G.lastNewsAt = -99;
   G.pos = null;
   G.lastTrade = null;
   G.particles.length = 0; G.floats.length = 0;
@@ -808,16 +896,16 @@ function startDay(){
   G.sniperArmed = G.mods.sniper;
   G.hedgeLeft = G.mods.hedge;
 
-  const vol = (TUNE.baseVol + TUNE.volPerDay * (G.day - 1)) * G.mods.volMult;
-  G.market = new Market(G.seed + G.day * 7919, vol);
+  const vol = (TUNE.baseVol + TUNE.volPerDay * (G.day - 1)) * G.mods.volMult * G.condition.vol;
+  G.market = new Market(G.seed + G.day * 7919, vol, G.condition);
   G.market.newRegime();
   for (let i = 0; i < TUNE.warmup * 60; i++) G.market.step(1 / 60);
   G.market.t = 0;
   for (const h of G.market.hist) h.t -= TUNE.warmup;
 
-  const len = TUNE.dayLength[G.day - 1] + G.mods.extraTime;
+  const len = dayLengthFor(G.day) + G.mods.extraTime;
   G.timeLeft = len;
-  G.news = buildNews(mulberry32(G.seed + G.day * 104729), G.day, len, G.mods.warnLead);
+  G.news = buildNews(mulberry32(G.seed + G.day * 104729), G.day, len, G.mods.warnLead, G.condition.newsMult);
   G.banner = null;
 
   G.screen = "play";
@@ -834,17 +922,15 @@ function settleDay(){
   G.history.push({ day:G.day, target:G.target, close:G.equity, trades:G.trades });
   if (G.equity > META.best){ META.best = G.equity; }
   if (G.day > META.bestDay){ META.bestDay = G.day; }
+  if (G.endless && G.day > (META.bestEndless || 0)){ META.bestEndless = G.day; }
   saveMeta();
 
   if (G.equity >= G.target){
-    if (G.day >= TUNE.targets.length){ G.screen = "won"; META.wins++; saveMeta(); showWin(); }
-    else {
-      /* the desk banks your overshoot: a good day buys a head start, not a fortune */
-      const cap = G.target * TUNE.carryCap;
-      let took = 0;
-      if (G.equity > cap){ took = G.equity - cap; G.swept += took; G.equity = cap; }
+    if (G.day >= TUNE.targets.length && !G.endless){
+      G.screen = "won"; META.wins++; saveMeta(); showWin();
+    } else {
       G.screen = "shop";
-      showShop(false, took);
+      showShop(false, applySweep());
     }
     return;
   }
@@ -860,6 +946,16 @@ function settleDay(){
   showOver("Quota missed",
     "You closed the session at " + fmt(G.equity) + " against a " + fmt(G.target) +
     " quota. The desk reassigns your capital before the bell rings again.");
+}
+
+/* the desk banks your overshoot: a good day buys a head start, not a fortune */
+function applySweep(){
+  const cap = G.target * (TUNE.carryCap + G.mods.sweepBonus);
+  if (G.equity <= cap) return 0;
+  const took = G.equity - cap;
+  G.swept += took;
+  G.equity = cap;
+  return took;
 }
 
 function marginCall(){
@@ -897,7 +993,7 @@ function stepGame(dt){
   const m = G.market;
   m.step(dt);
 
-  const elapsed = (TUNE.dayLength[G.day - 1] + G.mods.extraTime) - G.timeLeft;
+  const elapsed = (dayLengthFor(G.day) + G.mods.extraTime) - G.timeLeft;
   for (const n of G.news){
     if (!n.warned && elapsed >= n.at - n.lead){
       n.warned = true;
@@ -909,6 +1005,7 @@ function stepGame(dt){
     }
     if (!n.fired && elapsed >= n.at){
       n.fired = true;
+      G.lastNewsAt = m.t;
       m.impulse(n.dir, n.power);
       G.shake = Math.max(G.shake, 6);
       Audio_.sweep(n.dir > 0 ? 300 : 500, n.dir > 0 ? 700 : 180, 0.3, "square");
@@ -921,9 +1018,14 @@ function stepGame(dt){
 
   if (G.pos){
     const raw = pnlRaw();
+    if (raw > G.pos.peak) G.pos.peak = raw;
     if (G.mods.stopLoss && raw <= -G.pos.size * G.mods.stopLoss){
       closePos("stop");
       spawnFloat(headX(), priceToY(m.price) + 22, "STOPPED OUT", "#8B6BFF");
+    } else if (G.mods.trail && G.pos.peak > G.pos.size * 0.01 &&
+               raw <= G.pos.peak * (1 - G.mods.trail)){
+      closePos("trail");
+      spawnFloat(headX(), priceToY(m.price) + 22, "TRAILED OUT", "#8B6BFF");
     }
   }
   if (G.equity + livePnl() <= G.dayStart * G.mods.marginAt){ marginCall(); return; }
@@ -1221,7 +1323,8 @@ const el = {
 function paintHUD(){
   const live = livePnl();
   const eq = G.equity + live;
-  el.day.innerHTML = G.day + "<span class='haze'>/9</span>";
+  el.day.innerHTML = G.day + (G.day <= TUNE.targets.length
+    ? "<span class='haze'>/9</span>" : "<span class='gold'> ∞</span>");
   el.target.textContent = fmt(G.target);
   el.equity.textContent = fmt(eq);
   el.clock.textContent = Math.floor(G.timeLeft / 60) + ":" + String(Math.floor(G.timeLeft % 60)).padStart(2, "0");
@@ -1251,11 +1354,15 @@ function paintHUD(){
   }
 }
 function paintTriggers(){
+  if (G.mods.streakPer) paintHeld();
   el.bLong.classList.toggle("armed", !!G.pos && G.pos.dir > 0);
   el.bShort.classList.toggle("armed", !!G.pos && G.pos.dir < 0);
 }
 function paintHeld(){
   const bits = [];
+  if (G.condition) bits.push('<span class="chip cond"><span class="g">◈</span>' + G.condition.name + "</span>");
+  if (G.mods.streakPer && G.streak > 1)
+    bits.push('<span class="chip hot"><span class="g">▲</span>Streak ×' + G.streak + "</span>");
   if (G.sniperArmed) bits.push('<span class="chip"><span class="g">◆</span>Sniper armed</span>');
   if (G.hedgeLeft > 0) bits.push('<span class="chip"><span class="g">◆</span>Hedge ×' + G.hedgeLeft + "</span>");
   for (const id of G.ownedOrder){
@@ -1309,9 +1416,11 @@ function showTitle(){
           'firm overnight. A monster session buys a head start, never a free ride.</p></div>' +
       '</div>' +
       '<div class="row"><button class="cta" id="go">Ring the bell →</button>' +
+      '<button class="cta ghost" id="recs">Records</button>' +
       '<span class="haze mono" style="font-size:11.5px">' + META.runs + ' runs · ' + META.wins + ' millions</span></div>' +
     "</div>");
   $("go").onclick = () => { Audio_.boot(); newRun(); };
+  $("recs").onclick = showRecords;
 }
 
 function weightedSample(pool, n){
@@ -1354,7 +1463,7 @@ function showShop(covered, took){
     ? '<p class="lede">The parachute opened. The desk quietly covered ' + fmt(covered) +
       " and nobody wrote it down.</p>"
     : '<p class="lede">Session ' + G.day + " cleared." + sweptLine +
-      " Tomorrow the number is <b>" + fmt(TUNE.targets[G.day]) + "</b>.</p>";
+      " Tomorrow the number is <b>" + fmt(targetFor(G.day + 1)) + "</b>.</p>";
 
   showVeil(
     '<div class="card">' +
@@ -1375,6 +1484,41 @@ function showShop(covered, took){
         if (!G.ownedOrder.includes(u.id)) G.ownedOrder.push(u.id);
         Audio_.chord([440, 587, 880], 0.4);
       }
+      showConditionPick();
+    };
+  });
+}
+
+/* Second decision at the desk: what kind of tape you want to trade tomorrow.
+   Conditions never move the quota - they move the shape of the market, so the
+   right answer depends entirely on the kit you have been building. */
+function showConditionPick(){
+  const pool = CONDITIONS.slice();
+  const picks = [];
+  while (picks.length < 2 && pool.length) picks.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+
+  const cards = picks.map((c, i) =>
+    '<button class="offer cond" data-i="' + i + '">' +
+      '<span class="tag">Tomorrow</span>' +
+      '<span class="nm">' + c.name + "</span>" +
+      '<p class="ds">' + c.note + "</p>" +
+      '<span class="own">volatility ' + Math.round(c.vol * 100) + "% · headlines " +
+        Math.round(c.newsMult * 100) + "%</span>" +
+    "</button>").join("");
+
+  showVeil(
+    '<div class="card">' +
+      '<p class="eyebrow">The desk · the morning call</p>' +
+      "<h2>Pick tomorrow's book.</h2>" +
+      '<p class="lede">Session ' + (G.day + 1) + " runs against <b>" + fmt(targetFor(G.day + 1)) +
+      "</b> either way. All you are choosing is the tape you have to take it out of.</p>" +
+      '<div class="offers">' + cards + "</div>" +
+    "</div>");
+
+  el.veilBody.querySelectorAll(".offer").forEach(btn => {
+    btn.onclick = () => {
+      G.nextCondition = picks[+btn.dataset.i];
+      Audio_.blip(700, 0.09, "triangle", 0.4);
       startDay();
     };
   });
@@ -1409,11 +1553,42 @@ function showWin(){
       '<p class="lede" style="margin-top:14px">Started with a thousand dollars and a rented terminal. ' +
       "The desk will not say congratulations — it will only raise the quota.</p>" +
       ledgerHTML() +
-      '<div class="row"><button class="cta" id="again">Run it back →</button>' +
+      '<div class="row"><button class="cta" id="keep">Keep trading →</button>' +
+      '<button class="cta ghost" id="again">Run it back</button>' +
       '<button class="cta ghost" id="home">Back to the front</button></div>' +
+      '<p class="haze" style="font-size:12px;margin:14px 0 0">Keep trading and the quota keeps ' +
+      'multiplying. There is no ending after this, only a number you stopped at.</p>' +
     "</div>");
+  $("keep").onclick = () => {
+    G.endless = true;
+    G.screen = "shop";
+    showShop(false, applySweep());
+  };
   $("again").onclick = newRun;
   $("home").onclick = showTitle;
+}
+
+function showRecords(){
+  const rows = [
+    ["Best account", META.best ? fmt(META.best) : "—"],
+    ["Deepest session", META.bestDay ? "Session " + META.bestDay : "—"],
+    ["Runs traded", META.runs || 0],
+    ["Millions made", META.wins || 0],
+    ["Deepest endless session", META.bestEndless ? "Session " + META.bestEndless : "—"]
+  ].map(r => "<tr><td>" + r[0] + "</td><td>" + r[1] + "</td></tr>").join("");
+  showVeil(
+    '<div class="card">' +
+      '<p class="eyebrow">The book · career to date</p>' +
+      "<h2>Records.</h2>" +
+      '<table class="ledger">' + rows + "</table>" +
+      '<div class="row"><button class="cta" id="back">Back →</button>' +
+      '<button class="cta ghost" id="wipe">Erase the book</button></div>' +
+    "</div>");
+  $("back").onclick = showTitle;
+  $("wipe").onclick = () => {
+    META = { best:0, bestDay:0, runs:0, wins:0, bestEndless:0, sound:META.sound };
+    saveMeta(); showRecords();
+  };
 }
 
 /* ---------- input ------------------------------------------------------- */
@@ -1521,10 +1696,10 @@ function frame(now){
 /* ---------- boot -------------------------------------------------------- */
 resize();
 G.seed = (Math.random() * 1e9) | 0;
-G.market = new Market(G.seed, TUNE.baseVol);
+G.market = new Market(G.seed, TUNE.baseVol, CONDITIONS[0]);
 G.market.newRegime();
 for (let i = 0; i < TUNE.warmup * 60; i++) G.market.step(1 / 60);
-G.target = TUNE.targets[0];
+G.target = targetFor(1);
 G.equity = TUNE.startEquity;
 G.dayStart = TUNE.startEquity;
 G.day = 1;
