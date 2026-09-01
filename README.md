@@ -1,3 +1,75 @@
+# Paper Desk & Bull Run
+
+Two takes on the same idea, both single self-contained HTML files with no build
+step and no dependencies.
+
+- **`trader.html` — Paper Desk.** A practice trading terminal. Real tickers,
+  simulated prices, $500 to start, and a career layered on top.
+- **`index.html` — Bull Run.** A skill-based trading roguelite. Nine sessions to
+  turn $1,000 into $1,000,000.
+
+---
+
+# Paper Desk
+
+Open `trader.html`. You get $500, eight markets, and an order ticket.
+
+## What it is
+
+A paper trading simulator with a progression system. You post margin, pick your
+leverage, optionally attach a stop loss and take profit, and try to compound $500
+into something worth bragging about.
+
+**Prices are simulated, and the app says so on every screen.** A published page
+cannot reach a live price feed, so instead each real ticker is driven by a
+generator tuned to that asset's temperament — GME lurches, SPY crawls, BTC sits
+in between. Measured over a four-hour window: SPY moves ~2%, BTC ~3.5%, GME ~8%,
+and every asset stays within roughly ±10% of its headline price. The feed sits
+behind one `Feed` class, so a websocket adapter can replace it without the rest
+of the app noticing.
+
+## The mechanics are the real ones
+
+| | |
+|---|---|
+| Margin & leverage | Up to 10×, raised to 50× by perks |
+| Liquidation | At 90% of margin lost, priced and drawn on the chart before you commit |
+| Costs | 0.06% fee per side, a spread on entry, 0.04%/hour funding on borrowed size |
+| Orders | Market entry, stop loss and take profit set as a % of margin |
+| Book | Three concurrent positions, five with perks |
+
+Stops fill at market, so a gap can blow through one — same as the real thing.
+
+## The career
+
+Closed trades pay XP; XP pays levels; levels unlock perks you buy with cash.
+Twelve perks, each stacking with a rising price: fee rebates, +5% on winners,
+leverage upgrades, a signal package that draws a moving average and RSI, free
+stops, yield on idle cash, liquidation cover. Rank is set by your best equity,
+from Retail up to Legend at $1M.
+
+## Losing everything
+
+Drop below $25 and the account closes. Cash and perks go with it; your level,
+career stats and best-ever account survive. A fresh stake unlocks on a cooldown,
+or immediately if you sit through a sponsor break.
+
+That break is a **labelled placeholder, not an advert** — a countdown with no
+network request, no tracking and nothing sold. It exists so the flow can be
+tested, and so there is one obvious function to replace (`rewardedBreak()`) if
+this is ever monetised.
+
+## Notes
+
+Canvas candlestick chart with volume, moving average, RSI, crosshair, and entry /
+stop / target / liquidation lines. Full light and dark themes across all three
+viewer states. Everything persists to `localStorage`, wrapped so a blocked store
+still gives a working app. Note the file deliberately ships without a doctype so
+it can be published as an artifact; because a standalone open then lands in quirks
+mode, table colour and font are set explicitly rather than inherited.
+
+---
+
 # Bull Run
 
 A skill-based trading roguelite. You start with **$1,000** and nine sessions to turn it
