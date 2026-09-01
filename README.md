@@ -59,6 +59,21 @@ network request, no tracking and nothing sold. It exists so the flow can be
 tested, and so there is one obvious function to replace (`rewardedBreak()`) if
 this is ever monetised.
 
+## Setting levels
+
+Stops and targets are set on the chart, not in a form. Tick one on in the ticket
+and a labelled handle appears at the price it lands on; drag it where you want,
+or click the × to drop it. Positions already open carry the same handles — use
+**+ stop** or **+ target** in the blotter to attach one, then drag. A level that
+falls outside the current frame pins to the edge with an arrow rather than
+vanishing, so it is always draggable. Under the hood a level is still stored as a
+percentage of margin, which is what the engine checks; the price is just how you
+aim it.
+
+The chart pans and zooms: scroll to zoom, drag to slide back through history,
+double-click or **Live** to snap back to the edge. Handles are draggable by touch
+as well as mouse.
+
 ## Notes
 
 Canvas candlestick chart with volume, moving average, RSI, crosshair, and entry /
