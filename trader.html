@@ -208,6 +208,15 @@ table.grid tr:hover td:last-child{background:var(--surface-2)}
 #ticket{background:var(--surface);overflow-y:auto;padding:12px;gap:10px}
 .tk-title{font-size:9.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
 .side2{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;background:var(--surface-2);
+  padding:2px;border-radius:9px;border:1px solid var(--line);margin-bottom:10px}
+.seg button{padding:5px;border-radius:7px;font-size:11.5px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--raised);color:var(--text);box-shadow:var(--shadow)}
+.subhead{font-size:9.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--muted);padding:9px 10px 5px;background:var(--surface)}
+.partial{font-family:var(--f-data);font-size:11px;padding:3px 7px;border-radius:6px;
+  border:1px solid var(--line-2);color:var(--text-dim);margin-right:4px}
+.partial:hover{border-color:var(--accent);color:var(--accent-text)}
 .sidebtn{
   padding:9px;border-radius:var(--r);border:1px solid var(--line-2);font-weight:700;font-size:13px;
   letter-spacing:.03em;color:var(--muted);background:var(--surface-2);
@@ -263,6 +272,9 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:2px 0}
 .perk.maxed{opacity:.7}
 
 /* ---------- stats ---------- */
+.eqwrap{position:relative;height:172px;border-bottom:1px solid var(--line);background:var(--surface)}
+#eq{display:block;width:100%;height:100%}
+.eqnote{padding:26px 16px;text-align:center;color:var(--muted);font-size:12.5px}
 .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:1px;background:var(--line)}
 .statcell{background:var(--surface);padding:11px 12px}
 .statcell .k{font-size:9.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
@@ -284,6 +296,8 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:2px 0}
 .modal p{color:var(--text-dim);margin:0 0 14px;font-size:13.5px;line-height:1.55}
 .modal .eyebrow{font-family:var(--f-data);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
 .modal .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px}
+.modal kbd{font-family:var(--f-data);font-size:11px;background:var(--surface-2);color:var(--text);
+  border:1px solid var(--line-2);border-bottom-width:2px;border-radius:5px;padding:1px 5px}
 .btn{padding:10px 18px;border-radius:var(--r);font-weight:600;font-size:13.5px;background:var(--accent);color:#fff}
 .btn.ghost{background:none;border:1px solid var(--line-2);color:var(--text)}
 .btn.ghost:hover{border-color:var(--accent);color:var(--accent-text)}
@@ -408,6 +422,11 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:2px 0}
 
     <section id="ticket">
       <p class="tk-title">Order ticket</p>
+      <div class="seg" id="ordtypes" role="group" aria-label="Order type">
+        <button data-ot="market" class="on">Market</button>
+        <button data-ot="limit">Limit</button>
+        <button data-ot="stop">Stop</button>
+      </div>
       <div class="side2">
         <button class="sidebtn long on" id="s-long">LONG</button>
         <button class="sidebtn short" id="s-short">SHORT</button>
@@ -417,6 +436,12 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:2px 0}
         <label for="i-margin">Margin <b id="l-buying">avail $500.00</b></label>
         <input class="inp" id="i-margin" type="number" min="1" step="1" value="50" inputmode="decimal">
         <div class="chips" id="margin-chips"></div>
+      </div>
+
+      <div class="field hide" id="f-price">
+        <label for="i-price">Entry price <b id="l-price">—</b></label>
+        <input class="inp" id="i-price" type="number" step="any" inputmode="decimal">
+        <div class="hint" style="margin-top:4px" id="price-hint"></div>
       </div>
 
       <div class="field">
@@ -552,14 +577,14 @@ const xpNeeded = lvl => Math.round(80 * Math.pow(lvl, 1.45));
 const SAVE = "paperdesk.v1";
 function blankAccount(){
   return {
-    cash: CFG.startCash, positions: [], closed: [], perks: {},
-    peakEquity: CFG.startCash, insuranceUsed: false, openedAt: now(), seq: 1
+    cash: CFG.startCash, positions: [], orders: [], closed: [], perks: {},
+    peakEquity: CFG.startCash, insuranceUsed: false, openedAt: now(), seq: 1, curve: []
   };
 }
 function blankSave(){
   return Object.assign(blankAccount(), {
     level:1, xp:0, theme:"auto", speed:1, tf:1, asset:"BTC", tab:"positions",
-    blown:false, restakeAt:0, seenIntro:false, simMinute:0,
+    blown:false, restakeAt:0, seenIntro:false, simMinute:0, curve:[],
     marks:{},                       /* last price per symbol, so a reload continues */
     life:{ trades:0, wins:0, volume:0, best:0, worst:0, blowups:0, bestEquity:CFG.startCash }
   });
@@ -571,6 +596,8 @@ function load(){
     if (raw) S = Object.assign(blankSave(), JSON.parse(raw));
     if (!S.life) S.life = blankSave().life;
     if (!S.marks) S.marks = {};
+    if (!S.orders) S.orders = [];
+    if (!S.curve) S.curve = [];
   } catch(e){ S = blankSave(); }
 }
 let saveQueued = false;
@@ -700,11 +727,12 @@ const slPrice  = p => p.sl ? p.entry * (1 - p.side * (p.sl/100) / p.lev) : null;
 const tpPrice  = p => p.tp ? p.entry * (1 + p.side * (p.tp/100) / p.lev) : null;
 
 /* ---------- orders ------------------------------------------------------ */
-function openTrade(sym, side, margin, lev, sl, tp){
+function openTrade(sym, side, margin, lev, sl, tp, fromOrder){
   const m = feed(sym);
   if (!m) return { ok:false, why:"Unknown market." };
   if (S.blown) return { ok:false, why:"Your account is closed." };
-  if (S.positions.length >= slots()) return { ok:false, why:"Position book is full. Close one first." };
+  const booked = S.positions.length + (fromOrder ? 0 : S.orders.length);
+  if (booked >= slots()) return { ok:false, why:"Position book is full. Close one first." };
   margin = Math.floor(margin * 100) / 100;
   if (!(margin > 0)) return { ok:false, why:"Enter a margin amount." };
   const notional = margin * lev;
@@ -723,46 +751,90 @@ function openTrade(sym, side, margin, lev, sl, tp){
   return { ok:true };
 }
 
-function closeTrade(id, reason){
+/* A resting order. Margin is reserved the moment it is placed, the way an
+   exchange would hold it, and handed back if you cancel. */
+function placeOrder(sym, side, margin, lev, type, px, sl, tp){
+  if (S.blown) return { ok:false, why:"Your account is closed." };
+  if (S.positions.length + S.orders.length >= slots())
+    return { ok:false, why:"Book full — that includes resting orders." };
+  margin = Math.floor(margin*100)/100;
+  if (!(margin > 0)) return { ok:false, why:"Enter a margin amount." };
+  if (!(px > 0)) return { ok:false, why:"Enter an entry price." };
+  if (margin > S.cash + 1e-9) return { ok:false, why:"Not enough cash to reserve that margin." };
+  S.cash -= margin;
+  S.orders.push({ id:S.seq++, sym, side, margin, lev, type, px, sl:sl||0, tp:tp||0, placed:now() });
+  toast((type==="limit"?"Limit ":"Stop ")+(side>0?"buy ":"sell ")+sym+" resting at "+price(px), "");
+  save(); renderAll();
+  return { ok:true };
+}
+function cancelOrder(id, quiet){
+  const i = S.orders.findIndex(o => o.id === id);
+  if (i < 0) return;
+  S.cash += S.orders[i].margin;
+  const o = S.orders[i];
+  S.orders.splice(i, 1);
+  if (!quiet) toast("Cancelled " + o.type + " order on " + o.sym, "");
+  save(); renderAll();
+}
+/* limit buys fill from above, stop buys from below, and vice versa for sells */
+function orderTriggered(o, px){
+  if (o.type === "limit") return o.side > 0 ? px <= o.px : px >= o.px;
+  return o.side > 0 ? px >= o.px : px <= o.px;
+}
+function fillOrder(o){
+  const i = S.orders.indexOf(o);
+  if (i >= 0) S.orders.splice(i, 1);
+  S.cash += o.margin;                      /* release the hold, openTrade re-takes it */
+  const r = openTrade(o.sym, o.side, o.margin, o.lev, o.sl, o.tp, true);
+  if (!r.ok) toast("Order on "+o.sym+" could not fill: "+r.why, "bad");
+  else toast((o.type==="limit"?"Limit":"Stop")+" order filled · "+o.sym, "good");
+}
+
+function closeTrade(id, reason, frac){
   const i = S.positions.findIndex(p => p.id === id);
   if (i < 0) return;
   const p = S.positions[i], m = feed(p.sym);
+  const f = clamp(frac === undefined ? 1 : frac, 0.05, 1);
+  const partial = f < 0.999;
+  const margin = p.margin * f, notional = p.notional * f, funding = p.funding * f;
   const exit = m.p * (1 - p.side * CFG.spread);
-  let gross = p.notional * p.side * (exit / p.entry - 1) - p.funding;
+  let gross = notional * p.side * (exit / p.entry - 1) - funding;
 
   if (gross > 0){
     gross *= edgeMult();
     if (p.side < 0) gross *= shortMult();
   }
   const freeStop = reason === "stop" && own("stops");
-  const exitFee = freeStop ? 0 : p.notional * CFG.fee * feeMult();
+  const exitFee = freeStop ? 0 : notional * CFG.fee * feeMult();
   let net = gross - exitFee;
 
   let covered = 0;
   if (reason === "liquidated" && own("insure") && !S.insuranceUsed){
     S.insuranceUsed = true;
-    covered = p.margin * 0.5;
+    covered = margin * 0.5;
   }
-  const returned = Math.max(0, p.margin + net) + covered;
+  const returned = Math.max(0, margin + net) + covered;
   S.cash += returned;
-  S.positions.splice(i, 1);
+  if (partial){ p.margin -= margin; p.notional -= notional; p.funding -= funding; p.peak *= (1-f); }
+  else S.positions.splice(i, 1);
 
-  const realised = returned - p.margin;
-  S.life.trades++; S.life.volume += p.notional;
+  const realised = returned - margin;
+  S.life.trades++; S.life.volume += notional;
   if (realised > 0) S.life.wins++;
   if (realised > S.life.best) S.life.best = realised;
   if (realised < S.life.worst) S.life.worst = realised;
 
   S.closed.unshift({
-    sym:p.sym, side:p.side, margin:p.margin, lev:p.lev, entry:p.entry, exit,
-    pnl:realised, reason, mins: SIM.minute - p.openedAt, at: now(), covered
+    sym:p.sym, side:p.side, margin, lev:p.lev, entry:p.entry, exit,
+    pnl:realised, reason, mins: SIM.minute - p.openedAt, at: now(), covered, partial
   });
   if (S.closed.length > 200) S.closed.pop();
 
-  const gain = Math.round((5 + p.notional/200 + Math.max(0, realised)/8) * xpMult());
+  const gain = Math.round((5 + notional/200 + Math.max(0, realised)/8) * xpMult());
   addXp(gain);
 
-  const label = { manual:"Closed", stop:"Stop loss", target:"Take profit", liquidated:"LIQUIDATED" }[reason] || "Closed";
+  const label = (partial ? "Trimmed " + Math.round(f*100) + "% of " : "") +
+    ({ manual:"Closed", stop:"Stop loss", target:"Take profit", liquidated:"LIQUIDATED" }[reason] || "Closed");
   toast(label + " " + p.sym + " · " + signed(realised) + (covered ? " · cover " + money(covered) : "") +
         " · +" + gain + " XP", realised > 0 ? "good" : realised < 0 ? "bad" : "");
   checkBust();
@@ -793,6 +865,7 @@ function checkBust(){
   }
 }
 function restake(){
+  S.orders = []; S.curve = [];
   const keptLevel = S.level, keptXp = S.xp, life = S.life;
   Object.assign(S, blankAccount());
   S.blown = false; S.restakeAt = 0;
@@ -818,6 +891,11 @@ function stepWorld(dtMin){
 
   if (yieldRate() && S.cash > 0) S.cash += S.cash * yieldRate() * (dtMin/60);
 
+  for (const o of S.orders.slice()){
+    const fm = feed(o.sym);
+    if (fm && orderTriggered(o, fm.p)) fillOrder(o);
+  }
+
   for (const p of S.positions.slice()){
     p.funding += (p.notional - p.margin) * CFG.fundingHr * (dtMin/60);
     const net = posNet(p);
@@ -829,6 +907,11 @@ function stepWorld(dtMin){
   const eq = equity();
   if (eq > S.peakEquity) S.peakEquity = eq;
   if (eq > S.life.bestEquity) S.life.bestEquity = eq;
+  const last = S.curve[S.curve.length-1];
+  if (!last || SIM.minute - last.t >= 4){
+    S.curve.push({ t:+SIM.minute.toFixed(1), e:+eq.toFixed(2) });
+    if (S.curve.length > 480) S.curve.shift();
+  }
 }
 
 /* ---------- chart ------------------------------------------------------- */
@@ -919,6 +1002,9 @@ function drawChart(){
   const pendSl = (!S.blown && TK.sl) ? tkEntry*(1 - TK.side*(TK.slv/100)/TK.lev) : null;
   const pendTp = (!S.blown && TK.tp) ? tkEntry*(1 + TK.side*(TK.tpv/100)/TK.lev) : null;
   consider(pendSl); consider(pendTp);
+  const working = S.orders.filter(o => o.sym === S.asset);
+  for (const o of working) consider(o.px);
+  if (!S.blown && TK.type !== "market" && TK.price > 0) consider(TK.price);
   const mid=(lo+hi)/2, half=Math.max((hi-lo)/2, mid*0.0008);
   lo = mid-half*1.14; hi = mid+half*1.14;
   if (!yv.set){ yv.lo=lo; yv.hi=hi; yv.set=true; }
@@ -952,15 +1038,19 @@ function drawChart(){
   }
   cx.globalAlpha = 1;
 
-  /* candles */
+  /* Candles. Up candles are hollow and down candles filled, so direction reads
+     by shape as well as hue - red and green are ~5 dE apart under deuteranopia,
+     which is not enough on their own. */
   for (let i=0;i<data.length;i++){
-    const c = data[i], col = c.c>=c.o ? THEME.up : THEME.dn;
+    const c = data[i], up = c.c >= c.o, col = up ? THEME.up : THEME.dn;
     const x = X(i);
     cx.strokeStyle = col; cx.fillStyle = col; cx.lineWidth = 1;
     cx.beginPath();
     cx.moveTo(Math.round(x)+0.5, Y(c.h)); cx.lineTo(Math.round(x)+0.5, Y(c.l)); cx.stroke();
     const yo=Y(c.o), yc=Y(c.c);
-    cx.fillRect(x-bw/2, Math.min(yo,yc), bw, Math.max(1, Math.abs(yc-yo)));
+    const top = Math.min(yo,yc), h = Math.max(1, Math.abs(yc-yo));
+    if (up && h > 2 && bw > 2.6) cx.strokeRect(Math.round(x-bw/2)+0.5, Math.round(top)+0.5, Math.round(bw), Math.round(h));
+    else cx.fillRect(x-bw/2, top, bw, h);
   }
 
   /* moving average */
@@ -1018,6 +1108,16 @@ function drawChart(){
   }
 
   /* the order you are still composing gets ghost handles too */
+  for (const o of working)
+    line(o.px, THEME.accent, (o.type==="limit"?"LIMIT ":"STOP ")+(o.side>0?"BUY ":"SELL ")+price(o.px),
+         [7,3], { kind:"ord", id:o.id });
+
+  if (!S.blown && TK.type !== "market" && TK.price > 0){
+    cx.globalAlpha = 0.66;
+    line(TK.price, THEME.accent, "NEW "+TK.type.toUpperCase()+" "+price(TK.price), [3,4], { kind:"nord", id:0 });
+    cx.globalAlpha = 1;
+  }
+
   if (pendSl || pendTp){
     const mg = Math.max(0, +$("i-margin").value || 0);
     cx.globalAlpha = 0.66;
@@ -1118,7 +1218,7 @@ function toast(msg, kind){
 }
 
 /* ---------- ticket state ------------------------------------------------ */
-const TK = { side:1, margin:50, lev:5, sl:false, slv:25, tp:false, tpv:50 };
+const TK = { side:1, margin:50, lev:5, sl:false, slv:25, tp:false, tpv:50, type:"market", price:0 };
 
 /* ---------- header ------------------------------------------------------ */
 function renderHeader(){
@@ -1159,7 +1259,7 @@ function tickWatchlist(){
     const r = WREF[m.sym]; if (!r) continue;
     r.px.textContent = price(m.p);
     const c = m.change;
-    r.ch.textContent = pct(c);
+    r.ch.textContent = (c >= 0 ? "▲ " : "▼ ") + pct(c);
     r.ch.className = "ch mono " + (c>=0?"up":"dn");
     const held = S.positions.filter(p=>p.sym===m.sym);
     if (held.length){
@@ -1175,13 +1275,32 @@ function renderChartHead(){
   $("c-sym").textContent = m.sym;
   $("c-last").textContent = price(m.p);
   const c = m.change, el = $("c-chg");
-  el.textContent = pct(c);
+  el.textContent = (c >= 0 ? "▲ " : "▼ ") + pct(c);
   el.className = "pill mono " + (c>=0?"up":"dn");
   $("c-clock").textContent = "4h · " + (m.a.kind==="crypto" ? "24/7 market" : "session open");
 }
 
 /* ---------- order ticket ------------------------------------------------ */
+function defaultOrderPrice(){
+  const m = feed(S.asset);
+  const away = TK.type === "limit" ? -TK.side * 0.005 : TK.side * 0.005;
+  return m.p * (1 + away);
+}
+const FILL_HINT = {
+  "limit1":"Rests below the market and fills if price falls to it.",
+  "limit-1":"Rests above the market and fills if price rises to it.",
+  "stop1":"Fills if price rises through this level — a breakout entry.",
+  "stop-1":"Fills if price falls through this level — a breakdown entry."
+};
 function renderTicketStatic(){
+  $("ordtypes").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.ot === TK.type));
+  const isMkt = TK.type === "market";
+  $("f-price").classList.toggle("hide", isMkt);
+  if (!isMkt){
+    if (!(TK.price > 0)) TK.price = defaultOrderPrice();
+    $("i-price").value = +TK.price.toFixed(TK.price >= 1000 ? 2 : 4);
+    $("price-hint").textContent = FILL_HINT[TK.type + TK.side] || "";
+  }
   $("s-long").classList.toggle("on", TK.side>0);
   $("s-short").classList.toggle("on", TK.side<0);
   const cap = levCap();
@@ -1207,17 +1326,19 @@ function renderTicketStatic(){
 }
 function tickTicket(){
   const m = feed(S.asset);
+  const isMkt = TK.type === "market";
   const margin = Math.max(0, +$("i-margin").value || 0);
   const lev = TK.lev, notional = margin*lev;
   const fee = notional*CFG.fee*feeMult();
-  const entry = m.p*(1+TK.side*CFG.spread);
+  const entry = isMkt ? m.p*(1+TK.side*CFG.spread) : (TK.price || m.p);
   const liq = entry*(1 - TK.side*CFG.maintenance/lev);
   $("l-buying").textContent = "avail " + money(S.cash);
+  if (!isMkt) $("l-price").textContent = pct((entry/m.p - 1) * 100) + " away";
 
   const rows = [
     ["Position size", money(notional)],
-    ["Entry (est.)", price(entry)],
-    ["Fee", money(fee)],
+    [isMkt ? "Entry (est.)" : "Fills at", price(entry)],
+    [isMkt ? "Fee" : "Fee on fill", money(fee)],
     ["Liquidation", '<span style="color:var(--warn)">' + price(liq) + "</span>"]
   ];
   if (TK.sl){
@@ -1235,15 +1356,19 @@ function tickTicket(){
 
   const btn = $("btn-submit");
   btn.className = "submit " + (TK.side>0?"long":"short");
-  btn.textContent = (TK.side>0?"Buy ":"Short ") + S.asset;
-  const full = S.positions.length >= slots();
-  const broke = margin + fee > S.cash + 1e-9;
-  btn.disabled = S.blown || full || broke || margin <= 0;
+  btn.textContent = isMkt
+    ? (TK.side>0?"Buy ":"Short ") + S.asset
+    : "Place " + TK.type + " " + (TK.side>0?"buy":"sell");
+  const booked = S.positions.length + S.orders.length;
+  const full = booked >= slots();
+  const broke = (isMkt ? margin + fee : margin) > S.cash + 1e-9;
+  btn.disabled = S.blown || full || broke || margin <= 0 || (!isMkt && !(TK.price > 0));
   $("i-margin").classList.toggle("bad", broke && margin>0);
   $("tk-hint").textContent = S.blown ? "Your account is closed."
-    : full ? "Book full — " + S.positions.length + "/" + slots() + " positions open."
+    : full ? "Book full — " + booked + "/" + slots() + " positions and orders."
     : broke ? "That is more than your cash covers."
-    : "Liquidation happens when losses reach " + Math.round(CFG.maintenance*100) + "% of margin.";
+    : isMkt ? "Liquidation happens when losses reach " + Math.round(CFG.maintenance*100) + "% of margin."
+    : "Margin is reserved now and the fee is charged when it fills. Drag the line to move it.";
 }
 
 /* ---------- tabs -------------------------------------------------------- */
@@ -1256,7 +1381,7 @@ const TABS = [
 function renderTabs(){
   $("tabbar").innerHTML = TABS.map(t =>
     '<button data-tab="'+t.id+'" class="'+(S.tab===t.id?"on":"")+'">'+t.label+
-    (t.id==="positions" ? '<span class="count">'+S.positions.length+"/"+slots()+"</span>" : "")+
+    (t.id==="positions" ? '<span class="count">'+(S.positions.length+S.orders.length)+"/"+slots()+"</span>" : "")+
     (t.id==="journal" && S.closed.length ? '<span class="count">'+S.closed.length+"</span>" : "")+
     "</button>").join("");
   renderTabBody();
@@ -1266,11 +1391,28 @@ function renderTabBody(){
   const host = $("tabbody");
   for (const k in PREF) delete PREF[k];
   if (S.tab === "positions"){
-    if (!S.positions.length){
-      host.innerHTML = '<div class="empty">No open positions. Build an order on the right and the desk will fill it.</div>';
+    if (!S.positions.length && !S.orders.length){
+      host.innerHTML = '<div class="empty">Nothing working. Build an order on the right — market fills now, ' +
+        "limit and stop rest on the chart until price comes to them.</div>";
       return;
     }
-    host.innerHTML =
+    let pre = "";
+    if (S.orders.length){
+      pre = '<div class="subhead">Working orders</div>' +
+        '<table class="grid"><thead><tr><th>Market</th><th>Type</th><th>Side</th><th>Reserved</th>' +
+        "<th>Trigger</th><th>Away</th><th></th></tr></thead><tbody>" +
+        S.orders.map(o => {
+          const fm = feed(o.sym), away = (o.px/fm.p - 1) * 100;
+          return "<tr><td><b>"+o.sym+"</b></td><td>"+o.type+"</td>"+
+            '<td><span class="tag '+(o.side>0?"long":"short")+'">'+(o.side>0?"BUY":"SELL")+" "+o.lev+"×</span></td>"+
+            '<td class="n">'+money(o.margin)+'</td><td class="n">'+price(o.px)+"</td>"+
+            '<td class="n dim">'+pct(away)+"</td>"+
+            '<td><button class="xbtn" data-cancel="'+o.id+'">Cancel</button></td></tr>';
+        }).join("") + "</tbody></table>";
+      if (S.positions.length) pre += '<div class="subhead">Open positions</div>';
+    }
+    if (!S.positions.length){ host.innerHTML = pre; return; }
+    host.innerHTML = pre +
       '<table class="grid"><thead><tr><th>Market</th><th>Side</th><th>Size</th><th>Entry</th><th>Mark</th>'+
       "<th>P&amp;L</th><th>Liq</th><th>Stop</th><th>Target</th><th>Held</th><th></th></tr></thead><tbody>" +
       S.positions.map(p =>
@@ -1288,7 +1430,8 @@ function renderTabBody(){
           ? '<button class="lvl up" data-lvl="tp:'+p.id+'" title="Click to remove, or drag the line on the chart">'+price(tpPrice(p))+"</button>"
           : '<button class="lvl add" data-add="tp:'+p.id+'">+ target</button>')+"</td>"+
         '<td class="n held"></td>'+
-        '<td><button class="xbtn" data-close="'+p.id+'">Close</button></td></tr>').join("") +
+        '<td><button class="partial" data-part="'+p.id+'" title="Close half">½</button>'+
+        '<button class="xbtn" data-close="'+p.id+'">Close</button></td></tr>').join("") +
       "</tbody></table>";
     for (const p of S.positions){
       const tr = host.querySelector('tr[data-id="'+p.id+'"]');
@@ -1335,14 +1478,142 @@ function renderTabBody(){
       ["Trades", L.trades], ["Win rate", wr.toFixed(0)+"%"],
       ["Profit factor", pf===Infinity?"∞":pf.toFixed(2)],
       ["Volume traded", money(L.volume,0)],
-      ["Best trade", signed(L.best)], ["Worst trade", signed(L.worst)],
+      ["Best trade", L.trades ? signed(L.best) : "—"],
+      ["Worst trade", L.trades ? signed(L.worst) : "—"],
       ["Accounts blown", L.blowups], ["Positions", S.positions.length+"/"+slots()]
     ];
-    host.innerHTML = '<div class="statgrid">' + cells.map(c =>
+    const dd = curveDrawdown();
+    cells.splice(8, 0, ["Max drawdown", (dd*100).toFixed(1)+"%"]);
+    host.innerHTML = (S.curve.length > 2
+        ? '<div class="eqwrap"><canvas id="eq"></canvas></div>'
+        : '<div class="eqnote">Your equity curve appears here once you have traded for a minute.</div>') +
+      '<div class="statgrid">' + cells.map(c =>
       '<div class="statcell"><div class="k">'+c[0]+'</div><div class="v">'+c[1]+"</div></div>").join("") +
       "</div><div style=\"padding:12px\"><button class=\"linkbtn\" id=\"btn-reset\">Erase everything and start over</button></div>";
+    const eqc = $("eq");
+    if (eqc){
+      eqc.addEventListener("pointermove", ev => {
+        const r = eqc.getBoundingClientRect();
+        EQ.hover = { x:ev.clientX-r.left, y:ev.clientY-r.top };
+      });
+      eqc.addEventListener("pointerleave", () => { EQ.hover = null; });
+      drawEquity();
+    }
   }
 }
+/* Equity over time. One series, so no legend - the panel names it. Polarity is
+   carried by position relative to your starting stake as well as by the fill,
+   because red and green alone do not survive deuteranopia. */
+const EQ = { hover:null };
+/* 1-2-5 ticks across the decades the curve actually spans */
+function logTicks(lo, hi){
+  const out = [];
+  let dec = Math.pow(10, Math.floor(Math.log10(Math.max(1, lo))));
+  while (dec <= hi * 10 && out.length < 40){
+    for (const m of [1,2,5]){
+      const v = dec * m;
+      if (v >= lo && v <= hi) out.push(v);
+    }
+    dec *= 10;
+  }
+  return out.length >= 2 ? out : [lo, hi];
+}
+function curveDrawdown(){
+  let peak = -Infinity, dd = 0;
+  for (const pt of S.curve){
+    if (pt.e > peak) peak = pt.e;
+    if (peak > 0) dd = Math.max(dd, (peak - pt.e) / peak);
+  }
+  return dd;
+}
+function drawEquity(){
+  const c = $("eq");
+  if (!c || S.curve.length < 2) return;
+  const g = c.getContext("2d");
+  const r = c.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = Math.max(1, Math.round(r.width)), H = Math.max(1, Math.round(r.height));
+  c.width = Math.round(W*dpr); c.height = Math.round(H*dpr);
+  g.setTransform(dpr,0,0,dpr,0,0);
+  g.clearRect(0,0,W,H);
+
+  const pad = { l:12, r:66, t:16, b:20 };
+  const x0 = pad.l, x1 = W - pad.r, y0 = pad.t, y1 = H - pad.b;
+  const d = S.curve;
+  const ref = CFG.startCash;
+  const vals = d.map(p => Math.max(1, p.e));
+  let lo = Math.min(ref, ...vals), hi = Math.max(ref, ...vals);
+  const L = Math.log(Math.max(1, lo)), Hh = Math.log(Math.max(lo*1.02, hi));
+  const padL = (Hh - L) * 0.14 || 0.05;
+  const lgLo = L - padL, lgHi = Hh + padL;
+  const X = i => x0 + (i/(d.length-1))*(x1-x0);
+  const Y = v => y1 - ((Math.log(Math.max(1,v)) - lgLo)/(lgHi - lgLo))*(y1-y0);
+  const yRef = clamp(Y(ref), y0, y1);
+
+  g.font = "10px 'JetBrains Mono', monospace";
+  g.textBaseline = "middle";
+  for (const v of logTicks(Math.exp(lgLo), Math.exp(lgHi))){
+    const y = Math.round(Y(v))+0.5;
+    if (y < y0-2 || y > y1+2) continue;
+    g.strokeStyle = THEME.line; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x0,y); g.lineTo(x1,y); g.stroke();
+    g.fillStyle = THEME.muted; g.textAlign = "left";
+    g.fillText(money(v,0), x1+7, y);
+  }
+
+  const area = new Path2D();
+  area.moveTo(X(0), yRef);
+  d.forEach((p,i) => area.lineTo(X(i), Y(p.e)));
+  area.lineTo(X(d.length-1), yRef);
+  area.closePath();
+  g.save(); g.beginPath(); g.rect(x0, y0-4, x1-x0, Math.max(0, yRef-(y0-4))); g.clip();
+  g.fillStyle = THEME.up; g.globalAlpha = 0.16; g.fill(area); g.restore();
+  g.save(); g.beginPath(); g.rect(x0, yRef, x1-x0, Math.max(0, (y1+4)-yRef)); g.clip();
+  g.fillStyle = THEME.dn; g.globalAlpha = 0.16; g.fill(area); g.restore();
+  g.globalAlpha = 1;
+
+  g.save(); g.setLineDash([4,4]);
+  g.strokeStyle = THEME.muted; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(x0,yRef); g.lineTo(x1,yRef); g.stroke(); g.restore();
+  g.fillStyle = THEME.muted; g.textAlign = "left";
+  g.font = "9.5px 'JetBrains Mono', monospace";
+  g.fillText("stake " + money(ref,0), x0+3, yRef-8);
+
+  g.beginPath();
+  d.forEach((p,i) => i ? g.lineTo(X(i), Y(p.e)) : g.moveTo(X(i), Y(p.e)));
+  g.strokeStyle = THEME.accent; g.lineWidth = 2; g.lineJoin = "round";
+  g.stroke();
+
+  const lastPt = d[d.length-1], lx = X(d.length-1), ly = Y(lastPt.e);
+  g.beginPath(); g.arc(lx, ly, 3.5, 0, Math.PI*2);
+  g.fillStyle = THEME.accent; g.fill();
+  const delta = lastPt.e - ref;
+  const lab = money(lastPt.e,0) + "  " + (delta>=0?"▲ +":"▼ −") + money(Math.abs(delta),0);
+  g.font = "600 10px 'JetBrains Mono', monospace";
+  g.fillStyle = delta >= 0 ? THEME.up : THEME.dn;
+  g.textAlign = "left";
+  g.fillText(lab, x0+3, y0-2);
+
+  const hv = EQ.hover;
+  if (hv && hv.x > x0 && hv.x < x1){
+    const i = clamp(Math.round((hv.x-x0)/(x1-x0)*(d.length-1)), 0, d.length-1);
+    const px = X(i), py = Y(d[i].e);
+    g.save(); g.setLineDash([3,3]); g.strokeStyle = THEME.muted; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(px,y0-4); g.lineTo(px,y1+4); g.stroke(); g.restore();
+    g.beginPath(); g.arc(px,py,4,0,Math.PI*2);
+    g.fillStyle = THEME.accent; g.fill();
+    g.strokeStyle = THEME.surface; g.lineWidth = 2; g.stroke();
+    const t = money(d[i].e) + "   " + Math.round(SIM.minute - d[i].t) + "m ago";
+    g.font = "10px 'JetBrains Mono', monospace";
+    const tw = g.measureText(t).width + 14;
+    const bx = clamp(px - tw/2, x0, x1-tw);
+    g.fillStyle = THEME.surface; g.strokeStyle = THEME.line; g.lineWidth = 1;
+    g.fillRect(bx, y0-2, tw, 19); g.strokeRect(bx+0.5, y0-1.5, tw-1, 18);
+    g.fillStyle = THEME.text; g.textAlign = "left";
+    g.fillText(t, bx+7, y0+8);
+  }
+}
+
 function tickPositions(){
   if (S.tab !== "positions") return;
   for (const p of S.positions){
@@ -1404,6 +1675,11 @@ function showHelp(){
       'sudden gap can jump straight through one.</p>'+
       '<p><b>The chart pans and zooms.</b> Scroll to zoom, drag to slide back through history, double-click or hit '+
       '<b>Live</b> to snap back to the edge.</p>'+
+      '<p><b>Limit and stop orders</b> rest on the chart until price reaches them. A limit buy waits below the '+
+      'market, a stop buy waits above it. Margin is reserved when you place one and the fee is charged on the '+
+      'fill; drag the line to move it or click the × to cancel. <b>½</b> in the blotter closes half a position.</p>'+
+      '<p><b>Keys:</b> <kbd>B</kbd> buy side, <kbd>S</kbd> sell side, <kbd>Enter</kbd> submit, <kbd>1</kbd>–<kbd>8</kbd> '+
+      'switch market, <kbd>?</kbd> this card, <kbd>Esc</kbd> close.</p>'+
       '<div class="row"><button class="btn" id="m-ok">Got it</button></div>'+
     "</div>");
   $("m-ok").onclick = hideVeil;
@@ -1489,7 +1765,7 @@ function applyTheme(){
 
 $("wl-list").addEventListener("click", e => {
   const b = e.target.closest(".wl"); if (!b) return;
-  S.asset = b.dataset.sym; yv.set = false; VIEW.off = 0;
+  S.asset = b.dataset.sym; yv.set = false; VIEW.off = 0; TK.price = 0;
   $("watch").classList.remove("open");
   save(); renderAll();
 });
@@ -1507,8 +1783,14 @@ $("btn-theme").onclick = () => {
   toast("Theme: " + S.theme, "");
 };
 $("btn-help").onclick = showHelp;
-$("s-long").onclick  = () => { TK.side = 1;  renderTicketStatic(); };
-$("s-short").onclick = () => { TK.side = -1; renderTicketStatic(); };
+$("ordtypes").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  TK.type = b.dataset.ot; TK.price = 0;
+  renderTicketStatic();
+});
+$("i-price").oninput = e => { TK.price = +e.target.value || 0; tickTicket(); };
+$("s-long").onclick  = () => { TK.side = 1;  TK.price = 0; renderTicketStatic(); };
+$("s-short").onclick = () => { TK.side = -1; TK.price = 0; renderTicketStatic(); };
 $("i-margin").oninput = e => { TK.margin = +e.target.value || 0; tickTicket(); };
 $("i-lev").oninput = e => { TK.lev = +e.target.value; $("l-lev").textContent = TK.lev+"×"; tickTicket(); };
 $("t-sl").onchange = e => { TK.sl = e.target.checked; $("f-sl").classList.toggle("hide", !TK.sl); tickTicket(); };
@@ -1516,8 +1798,10 @@ $("t-tp").onchange = e => { TK.tp = e.target.checked; $("f-tp").classList.toggle
 $("i-sl").oninput = e => { TK.slv = clamp(+e.target.value||1, 1, 95); tickTicket(); };
 $("i-tp").oninput = e => { TK.tpv = Math.max(1, +e.target.value||1); tickTicket(); };
 $("btn-submit").onclick = () => {
-  const r = openTrade(S.asset, TK.side, +$("i-margin").value||0, TK.lev,
-                      TK.sl?TK.slv:0, TK.tp?TK.tpv:0);
+  const mg = +$("i-margin").value || 0, sl = TK.sl?TK.slv:0, tp = TK.tp?TK.tpv:0;
+  const r = TK.type === "market"
+    ? openTrade(S.asset, TK.side, mg, TK.lev, sl, tp)
+    : placeOrder(S.asset, TK.side, mg, TK.lev, TK.type, TK.price, sl, tp);
   if (!r.ok) toast(r.why, "bad");
   else $("ticket").classList.remove("open");
 };
@@ -1528,6 +1812,10 @@ $("tabbar").addEventListener("click", e => {
 $("tabbody").addEventListener("click", e => {
   const c = e.target.closest("[data-close]");
   if (c){ closeTrade(+c.dataset.close, "manual"); return; }
+  const part = e.target.closest("[data-part]");
+  if (part){ closeTrade(+part.dataset.part, "manual", 0.5); return; }
+  const can = e.target.closest("[data-cancel]");
+  if (can){ cancelOrder(+can.dataset.cancel); return; }
   const add = e.target.closest("[data-add]");
   if (add){
     const [kind, id] = add.dataset.add.split(":");
@@ -1585,6 +1873,17 @@ function handleAt(pt){
 /* a dragged level is stored as a percentage of margin, which is what the
    engine actually checks - the price is just how you aim it */
 function applyLevel(kind, id, px){
+  if (kind === "nord"){
+    TK.price = px;
+    $("i-price").value = +px.toFixed(px >= 1000 ? 2 : 4);
+    tickTicket();
+    return;
+  }
+  if (kind === "ord"){
+    const o = S.orders.find(x => x.id === id);
+    if (o) o.px = px;
+    return;
+  }
   if (kind === "nsl" || kind === "ntp"){
     const m = feed(S.asset), entry = m.p * (1 + TK.side*CFG.spread);
     const frac = TK.lev * TK.side * (px/entry - 1) * 100;
@@ -1600,6 +1899,8 @@ function applyLevel(kind, id, px){
   }
 }
 function clearLevel(kind, id){
+  if (kind === "nord"){ TK.type = "market"; TK.price = 0; renderTicketStatic(); return; }
+  if (kind === "ord"){ cancelOrder(id); return; }
   if (kind === "nsl"){ TK.sl = false; $("t-sl").checked = false; $("f-sl").classList.add("hide"); tickTicket(); }
   else if (kind === "ntp"){ TK.tp = false; $("t-tp").checked = false; $("f-tp").classList.add("hide"); tickTicket(); }
   else {
@@ -1654,6 +1955,23 @@ $("zoomers").addEventListener("click", e => {
 });
 $("btn-watch").onclick  = () => $("watch").classList.toggle("open");
 $("btn-ticket").onclick = () => $("ticket").classList.toggle("open");
+/* A terminal should be operable from the keyboard. Typing in a field never
+   triggers these, and Escape cannot dismiss the blow-up screen. */
+window.addEventListener("keydown", e => {
+  if (e.target.matches("input, select, textarea")) return;
+  if (e.key === "Escape"){ if (!S.blown) hideVeil(); return; }
+  if ($("veil").classList.contains("on")) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key.toLowerCase();
+  if (k === "b"){ TK.side = 1; TK.price = 0; renderTicketStatic(); }
+  else if (k === "s"){ TK.side = -1; TK.price = 0; renderTicketStatic(); }
+  else if (k === "enter"){ e.preventDefault(); if (!$("btn-submit").disabled) $("btn-submit").click(); }
+  else if (k === "?"){ showHelp(); }
+  else if (k >= "1" && k <= "8"){
+    const m = MKT[+k - 1];
+    if (m){ S.asset = m.sym; yv.set = false; VIEW.off = 0; TK.price = 0; save(); renderAll(); }
+  }
+});
 window.addEventListener("resize", () => { resizeChart(); syncMobile(); });
 function syncMobile(){
   const narrow = window.innerWidth <= 960, phone = window.innerWidth <= 640;
@@ -1679,6 +1997,7 @@ function frame(t){
   tickPositions();
   if (frames % 3 === 0){ tickWatchlist(); renderChartHead(); }
   if (frames % 6 === 0) tickTicket();
+  if (S.tab === "stats" && frames % 4 === 0) drawEquity();
   drawChart();
   if (now() - lastSave > 8000){ lastSave = now(); save(); }
   requestAnimationFrame(frame);

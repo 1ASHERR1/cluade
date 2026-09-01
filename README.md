@@ -59,6 +59,19 @@ network request, no tracking and nothing sold. It exists so the flow can be
 tested, and so there is one obvious function to replace (`rewardedBreak()`) if
 this is ever monetised.
 
+## Orders
+
+Market, **limit** and **stop** entries. A limit buy rests below the market and
+fills if price falls to it; a stop buy rests above and fills if price rises
+through it — sells mirror both. Margin is reserved the moment you place a resting
+order, the way an exchange holds it, and returned in full if you cancel. The fee
+is charged on the fill. Resting orders draw on the chart as draggable lines, count
+against your book capacity, and can be cancelled from the blotter or by clicking
+the × on their handle.
+
+**½** in the blotter closes half a position; margin, size and accrued funding all
+scale down and the trim is logged as its own entry in the journal.
+
 ## Setting levels
 
 Stops and targets are set on the chart, not in a form. Tick one on in the ticket
@@ -73,6 +86,24 @@ aim it.
 The chart pans and zooms: scroll to zoom, drag to slide back through history,
 double-click or **Live** to snap back to the edge. Handles are draggable by touch
 as well as mouse.
+
+## Reading your account
+
+The Career tab opens with an equity curve on a **log scale**, because a trading
+account compounds — equal percentage moves deserve equal height, and a linear axis
+would squash the first $500 of a run into a sliver. Ticks are plain money values.
+The dashed line is your starting stake, the fill is green above it and red below,
+and a crosshair reads any point. Max drawdown is computed from the same series.
+
+Direction never rests on colour alone: red and green sit about 5 ΔE apart under
+deuteranopia, which is below the threshold where they can be told apart. So up
+candles are hollow and down candles filled, changes carry ▲/▼, and every P&L
+figure is signed.
+
+## Keys
+
+`B` buy side · `S` sell side · `Enter` submit · `1`–`8` switch market · `?` help ·
+`Esc` close. Typing in a field never triggers them.
 
 ## Notes
 
