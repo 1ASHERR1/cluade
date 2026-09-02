@@ -72,6 +72,15 @@ the × on their handle.
 **½** in the blotter closes half a position; margin, size and accrued funding all
 scale down and the trim is logged as its own entry in the journal.
 
+## Trailing stops
+
+A trailing stop follows the best price your trade has reached and never walks
+back, so it locks in gains without capping them. Set the distance as a percentage
+of margin in the ticket, or attach one to a live position with **+ trail** in the
+blotter, then drag its line like any other level — dragging measures back from the
+best price seen, not from your entry. Longs ratchet up, shorts ratchet down, and
+the exit is logged in the journal as its own reason.
+
 ## Setting levels
 
 Stops and targets are set on the chart, not in a form. Tick one on in the ticket
@@ -88,6 +97,14 @@ double-click or **Live** to snap back to the edge. Handles are draggable by touc
 as well as mouse.
 
 ## Reading your account
+
+The Journal opens with a **by-market** breakdown — trades, win rate, net P&L,
+best, worst and average hold for each ticker you have touched, ranked by what it
+actually made you. Net P&L carries an inline bar anchored at a zero line, so which
+markets are carrying you and which are bleeding reads in one glance without
+depending on colour.
+
+
 
 The Career tab opens with an equity curve on a **log scale**, because a trading
 account compounds — equal percentage moves deserve equal height, and a linear axis

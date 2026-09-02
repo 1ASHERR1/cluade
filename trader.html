@@ -161,6 +161,14 @@ header{
 .lvl.dn{color:var(--dn);border-color:var(--dn)}
 .lvl.up{color:var(--up);border-color:var(--up)}
 .lvl.add{color:var(--muted)}
+.lvl.trail{color:var(--accent-text);border-color:var(--accent)}
+/* net P&L per market, anchored at a zero line: length is magnitude, side is
+   polarity, so direction does not rest on hue alone */
+.mbar{position:relative;width:104px;height:9px;background:var(--surface-2);border-radius:3px}
+.mbar::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--line-2)}
+.mbar i{position:absolute;top:0;bottom:0;border-radius:3px}
+.mbar i.up{background:var(--up)}
+.mbar i.dn{background:var(--dn)}
 .lvl:hover{border-color:var(--accent);color:var(--accent-text)}
 #cwrap{position:relative;flex:1;min-height:0}
 #chart{display:block;width:100%;height:100%}
@@ -308,7 +316,7 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:2px 0}
 .bigfig{font-family:var(--f-display);font-weight:800;font-size:clamp(34px,7vw,52px);letter-spacing:-.03em;line-height:1}
 
 /* toast */
-#toasts{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none;width:min(420px,92vw)}
+#toasts{position:fixed;bottom:14px;left:14px;z-index:60;display:flex;flex-direction:column;gap:6px;align-items:flex-start;pointer-events:none;width:min(360px,68vw)}
 .toast{
   background:var(--raised);border:1px solid var(--line-2);border-radius:9px;padding:8px 13px;
   font-size:12.5px;box-shadow:var(--shadow);animation:tin .25s both;width:100%;
@@ -461,6 +469,13 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:2px 0}
         <label for="i-tp">Profit target <b id="l-tp">—</b></label>
         <input class="inp" id="i-tp" type="number" min="1" step="1" value="50" inputmode="decimal">
         <div class="hint" style="margin-top:4px">% of margin you want to make.</div>
+      </div>
+
+      <label class="toggle"><input type="checkbox" id="t-tr"> Trailing stop</label>
+      <div class="field hide" id="f-tr">
+        <label for="i-tr">Trail distance <b id="l-tr">—</b></label>
+        <input class="inp" id="i-tr" type="number" min="1" max="95" step="1" value="30" inputmode="decimal">
+        <div class="hint" style="margin-top:4px">Follows the best price the trade reaches, staying this far behind it.</div>
       </div>
 
       <div class="sumbox" id="sumbox"></div>
@@ -725,9 +740,10 @@ const openPnl = () => S.positions.reduce((a,p) => a + posNet(p), 0);
 const liqPrice = p => p.entry * (1 - p.side * CFG.maintenance / p.lev);
 const slPrice  = p => p.sl ? p.entry * (1 - p.side * (p.sl/100) / p.lev) : null;
 const tpPrice  = p => p.tp ? p.entry * (1 + p.side * (p.tp/100) / p.lev) : null;
+const trailPrice = p => p.trail ? p.best * (1 - p.side * (p.trail/100) / p.lev) : null;
 
 /* ---------- orders ------------------------------------------------------ */
-function openTrade(sym, side, margin, lev, sl, tp, fromOrder){
+function openTrade(sym, side, margin, lev, sl, tp, tr, fromOrder){
   const m = feed(sym);
   if (!m) return { ok:false, why:"Unknown market." };
   if (S.blown) return { ok:false, why:"Your account is closed." };
@@ -744,7 +760,7 @@ function openTrade(sym, side, margin, lev, sl, tp, fromOrder){
   S.positions.push({
     id: S.seq++, sym, side, margin, lev, notional, entry,
     openedAt: SIM.minute, openedReal: now(), funding: 0, feePaid: fee,
-    sl: sl || 0, tp: tp || 0, peak: 0
+    sl: sl || 0, tp: tp || 0, trail: tr || 0, best: entry
   });
   toast((side>0?"Long":"Short") + " " + sym + " · " + money(notional) + " notional at " + price(entry), "");
   save(); renderAll();
@@ -753,7 +769,7 @@ function openTrade(sym, side, margin, lev, sl, tp, fromOrder){
 
 /* A resting order. Margin is reserved the moment it is placed, the way an
    exchange would hold it, and handed back if you cancel. */
-function placeOrder(sym, side, margin, lev, type, px, sl, tp){
+function placeOrder(sym, side, margin, lev, type, px, sl, tp, tr){
   if (S.blown) return { ok:false, why:"Your account is closed." };
   if (S.positions.length + S.orders.length >= slots())
     return { ok:false, why:"Book full — that includes resting orders." };
@@ -762,7 +778,7 @@ function placeOrder(sym, side, margin, lev, type, px, sl, tp){
   if (!(px > 0)) return { ok:false, why:"Enter an entry price." };
   if (margin > S.cash + 1e-9) return { ok:false, why:"Not enough cash to reserve that margin." };
   S.cash -= margin;
-  S.orders.push({ id:S.seq++, sym, side, margin, lev, type, px, sl:sl||0, tp:tp||0, placed:now() });
+  S.orders.push({ id:S.seq++, sym, side, margin, lev, type, px, sl:sl||0, tp:tp||0, tr:tr||0, placed:now() });
   toast((type==="limit"?"Limit ":"Stop ")+(side>0?"buy ":"sell ")+sym+" resting at "+price(px), "");
   save(); renderAll();
   return { ok:true };
@@ -785,7 +801,7 @@ function fillOrder(o){
   const i = S.orders.indexOf(o);
   if (i >= 0) S.orders.splice(i, 1);
   S.cash += o.margin;                      /* release the hold, openTrade re-takes it */
-  const r = openTrade(o.sym, o.side, o.margin, o.lev, o.sl, o.tp, true);
+  const r = openTrade(o.sym, o.side, o.margin, o.lev, o.sl, o.tp, o.tr, true);
   if (!r.ok) toast("Order on "+o.sym+" could not fill: "+r.why, "bad");
   else toast((o.type==="limit"?"Limit":"Stop")+" order filled · "+o.sym, "good");
 }
@@ -815,7 +831,7 @@ function closeTrade(id, reason, frac){
   }
   const returned = Math.max(0, margin + net) + covered;
   S.cash += returned;
-  if (partial){ p.margin -= margin; p.notional -= notional; p.funding -= funding; p.peak *= (1-f); }
+  if (partial){ p.margin -= margin; p.notional -= notional; p.funding -= funding; }
   else S.positions.splice(i, 1);
 
   const realised = returned - margin;
@@ -834,7 +850,8 @@ function closeTrade(id, reason, frac){
   addXp(gain);
 
   const label = (partial ? "Trimmed " + Math.round(f*100) + "% of " : "") +
-    ({ manual:"Closed", stop:"Stop loss", target:"Take profit", liquidated:"LIQUIDATED" }[reason] || "Closed");
+    ({ manual:"Closed", stop:"Stop loss", target:"Take profit", trail:"Trailing stop",
+       liquidated:"LIQUIDATED" }[reason] || "Closed");
   toast(label + " " + p.sym + " · " + signed(realised) + (covered ? " · cover " + money(covered) : "") +
         " · +" + gain + " XP", realised > 0 ? "good" : realised < 0 ? "bad" : "");
   checkBust();
@@ -899,10 +916,19 @@ function stepWorld(dtMin){
   for (const p of S.positions.slice()){
     p.funding += (p.notional - p.margin) * CFG.fundingHr * (dtMin/60);
     const net = posNet(p);
-    if (net > p.peak) p.peak = net;
+    /* the trail ratchets off the best price the position has seen and never
+       walks back, so it locks in gains without capping them */
+    if (p.trail){
+      const px = feed(p.sym).p;
+      p.best = p.side > 0 ? Math.max(p.best, px) : Math.min(p.best, px);
+    }
     if (net <= -p.margin * CFG.maintenance) closeTrade(p.id, "liquidated");
     else if (p.sl && net <= -p.margin * (p.sl/100)) closeTrade(p.id, "stop");
     else if (p.tp && net >= p.margin * (p.tp/100)) closeTrade(p.id, "target");
+    else if (p.trail){
+      const px = feed(p.sym).p, tr = trailPrice(p);
+      if (p.side > 0 ? px <= tr : px >= tr) closeTrade(p.id, "trail");
+    }
   }
   const eq = equity();
   if (eq > S.peakEquity) S.peakEquity = eq;
@@ -992,7 +1018,7 @@ function drawChart(){
   for (const c of data){ if(c.l<lo)lo=c.l; if(c.h>hi)hi=c.h; if(c.v>vmax)vmax=c.v; }
   const pos = S.positions.filter(p=>p.sym===S.asset);
   const span0 = Math.max(hi-lo, hi*0.0004);
-  const limLo = lo - span0*1.2, limHi = hi + span0*1.2;
+  const limLo = lo - span0*1.8, limHi = hi + span0*1.8;
   const consider = v => {
     if (v == null || !isFinite(v)) return;
     if (v >= limLo && v <= limHi){ lo = Math.min(lo,v); hi = Math.max(hi,v); }
@@ -1001,7 +1027,8 @@ function drawChart(){
   const tkEntry = m.p * (1 + TK.side*CFG.spread);
   const pendSl = (!S.blown && TK.sl) ? tkEntry*(1 - TK.side*(TK.slv/100)/TK.lev) : null;
   const pendTp = (!S.blown && TK.tp) ? tkEntry*(1 + TK.side*(TK.tpv/100)/TK.lev) : null;
-  consider(pendSl); consider(pendTp);
+  const pendTr = (!S.blown && TK.tr) ? tkEntry*(1 - TK.side*(TK.trv/100)/TK.lev) : null;
+  consider(pendSl); consider(pendTp); consider(pendTr);
   const working = S.orders.filter(o => o.sym === S.asset);
   for (const o of working) consider(o.px);
   if (!S.blown && TK.type !== "market" && TK.price > 0) consider(TK.price);
@@ -1105,6 +1132,8 @@ function drawChart(){
                    [5,4], { kind:"sl", id:p.id });
     if (p.tp) line(tpPrice(p), THEME.up, "TP "+price(tpPrice(p))+"  +"+money(p.margin*p.tp/100,0),
                    [5,4], { kind:"tp", id:p.id });
+    if (p.trail) line(trailPrice(p), THEME.accent, "TRAIL "+price(trailPrice(p)),
+                      [2,2], { kind:"tr", id:p.id });
   }
 
   /* the order you are still composing gets ghost handles too */
@@ -1118,9 +1147,10 @@ function drawChart(){
     cx.globalAlpha = 1;
   }
 
-  if (pendSl || pendTp){
+  if (pendSl || pendTp || pendTr){
     const mg = Math.max(0, +$("i-margin").value || 0);
     cx.globalAlpha = 0.66;
+    if (pendTr) line(pendTr, THEME.accent, "NEW TRAIL "+price(pendTr)+"  −"+money(mg*TK.trv/100,0), [2,2], { kind:"ntr", id:0 });
     if (pendSl) line(pendSl, THEME.dn, "NEW SL "+price(pendSl)+"  −"+money(mg*TK.slv/100,0), [3,4], { kind:"nsl", id:0 });
     if (pendTp) line(pendTp, THEME.up, "NEW TP "+price(pendTp)+"  +"+money(mg*TK.tpv/100,0), [3,4], { kind:"ntp", id:0 });
     cx.globalAlpha = 1;
@@ -1218,7 +1248,7 @@ function toast(msg, kind){
 }
 
 /* ---------- ticket state ------------------------------------------------ */
-const TK = { side:1, margin:50, lev:5, sl:false, slv:25, tp:false, tpv:50, type:"market", price:0 };
+const TK = { side:1, margin:50, lev:5, sl:false, slv:25, tp:false, tpv:50, tr:false, trv:30, type:"market", price:0 };
 
 /* ---------- header ------------------------------------------------------ */
 function renderHeader(){
@@ -1310,6 +1340,7 @@ function renderTicketStatic(){
   $("i-margin").value = TK.margin;
   $("t-sl").checked = TK.sl; $("f-sl").classList.toggle("hide", !TK.sl); $("i-sl").value = TK.slv;
   $("t-tp").checked = TK.tp; $("f-tp").classList.toggle("hide", !TK.tp); $("i-tp").value = TK.tpv;
+  $("t-tr").checked = TK.tr; $("f-tr").classList.toggle("hide", !TK.tr); $("i-tr").value = TK.trv;
 
   const chips = $("margin-chips");
   chips.innerHTML = "";
@@ -1350,6 +1381,11 @@ function tickTicket(){
     const p3 = entry*(1 + TK.side*(TK.tpv/100)/lev);
     rows.push(["Target at", '<span class="up">' + price(p3) + "  (+" + money(margin*TK.tpv/100*edgeMult()) + ")</span>"]);
     $("l-tp").textContent = "+" + money(margin*TK.tpv/100);
+  }
+  if (TK.tr){
+    const p4 = entry*(1 - TK.side*(TK.trv/100)/lev);
+    rows.push(["Trails from", '<span style="color:var(--accent-text)">' + price(p4) + "  −" + money(margin*TK.trv/100) + "</span>"]);
+    $("l-tr").textContent = money(margin*TK.trv/100) + " behind";
   }
   $("sumbox").innerHTML = rows.map(r =>
     '<div class="sumrow"><span class="dim">'+r[0]+"</span><span>"+r[1]+"</span></div>").join("");
@@ -1414,7 +1450,7 @@ function renderTabBody(){
     if (!S.positions.length){ host.innerHTML = pre; return; }
     host.innerHTML = pre +
       '<table class="grid"><thead><tr><th>Market</th><th>Side</th><th>Size</th><th>Entry</th><th>Mark</th>'+
-      "<th>P&amp;L</th><th>Liq</th><th>Stop</th><th>Target</th><th>Held</th><th></th></tr></thead><tbody>" +
+      "<th>P&amp;L</th><th>Liq</th><th>Stop</th><th>Target</th><th>Trail</th><th>Held</th><th></th></tr></thead><tbody>" +
       S.positions.map(p =>
         '<tr data-id="'+p.id+'"><td><b>'+p.sym+"</b></td>"+
         '<td><span class="tag '+(p.side>0?"long":"short")+'">'+(p.side>0?"LONG":"SHORT")+" "+p.lev+"×</span></td>"+
@@ -1429,6 +1465,9 @@ function renderTabBody(){
         '<td class="n">'+(p.tp
           ? '<button class="lvl up" data-lvl="tp:'+p.id+'" title="Click to remove, or drag the line on the chart">'+price(tpPrice(p))+"</button>"
           : '<button class="lvl add" data-add="tp:'+p.id+'">+ target</button>')+"</td>"+
+        '<td class="n">'+(p.trail
+          ? '<button class="lvl trail" data-lvl="tr:'+p.id+'" title="Click to remove, or drag the line on the chart">'+price(trailPrice(p))+"</button>"
+          : '<button class="lvl add" data-add="tr:'+p.id+'">+ trail</button>')+"</td>"+
         '<td class="n held"></td>'+
         '<td><button class="partial" data-part="'+p.id+'" title="Close half">½</button>'+
         '<button class="xbtn" data-close="'+p.id+'">Close</button></td></tr>').join("") +
@@ -1441,7 +1480,27 @@ function renderTabBody(){
   }
   else if (S.tab === "journal"){
     if (!S.closed.length){ host.innerHTML = '<div class="empty">Closed trades will be logged here.</div>'; return; }
-    host.innerHTML =
+    const byMkt = marketStats();
+    const worst = Math.max(1, ...byMkt.map(b => Math.abs(b.pnl)));
+    const summary =
+      '<div class="subhead">By market · ' + byMkt.length + (byMkt.length===1?" market":" markets") + "</div>" +
+      '<table class="grid"><thead><tr><th>Market</th><th>Trades</th><th>Win rate</th>' +
+      "<th>Net P&amp;L</th><th></th><th>Best</th><th>Worst</th><th>Avg hold</th></tr></thead><tbody>" +
+      byMkt.map(b => {
+        const w = Math.round(50 * Math.abs(b.pnl) / worst);
+        const bar = '<div class="mbar"><i class="' + (b.pnl>=0?"up":"dn") + '" style="' +
+          (b.pnl>=0 ? "left:50%;width:"+w+"%" : "right:50%;width:"+w+"%") + '"></i></div>';
+        return "<tr><td><b>"+b.sym+"</b></td>"+
+          '<td class="n">'+b.n+"</td>"+
+          '<td class="n">'+Math.round(b.w/b.n*100)+"%</td>"+
+          '<td class="n '+(b.pnl>0?"up":b.pnl<0?"dn":"")+'">'+signed(b.pnl)+"</td>"+
+          "<td>"+bar+"</td>"+
+          '<td class="n dim">'+signed(b.best)+"</td>"+
+          '<td class="n dim">'+signed(b.worst)+"</td>"+
+          '<td class="n dim">'+Math.round(b.mins/b.n)+"m</td></tr>";
+      }).join("") + "</tbody></table>" +
+      '<div class="subhead">Trades</div>';
+    host.innerHTML = summary +
       '<table class="grid"><thead><tr><th>Market</th><th>Side</th><th>Entry</th><th>Exit</th>'+
       "<th>P&amp;L</th><th>Exit reason</th><th>Held</th></tr></thead><tbody>" +
       S.closed.slice(0,60).map(t =>
@@ -1449,7 +1508,8 @@ function renderTabBody(){
         '<td><span class="tag '+(t.side>0?"long":"short")+'">'+(t.side>0?"LONG":"SHORT")+" "+t.lev+"×</span></td>"+
         '<td class="n">'+price(t.entry)+'</td><td class="n">'+price(t.exit)+"</td>"+
         '<td class="n '+(t.pnl>0?"up":t.pnl<0?"dn":"")+'">'+signed(t.pnl)+"</td>"+
-        "<td>"+({manual:"Closed by hand",stop:"Stop loss",target:"Take profit",liquidated:"Liquidated"}[t.reason]||t.reason)+
+        "<td>"+({manual:"Closed by hand",stop:"Stop loss",target:"Take profit",trail:"Trailing stop",
+          liquidated:"Liquidated"}[t.reason]||t.reason)+
         (t.covered?" (covered)":"")+"</td>"+
         '<td class="n dim">'+Math.round(t.mins)+"m</td></tr>").join("") +
       "</tbody></table>";
@@ -1614,6 +1674,21 @@ function drawEquity(){
   }
 }
 
+/* Per-market performance, ranked by what each one actually made you. */
+function marketStats(){
+  const by = {};
+  for (const t of S.closed){
+    const b = by[t.sym] || (by[t.sym] = { sym:t.sym, n:0, w:0, pnl:0, best:-Infinity, worst:Infinity, mins:0 });
+    b.n++;
+    if (t.pnl > 0) b.w++;
+    b.pnl += t.pnl;
+    b.mins += t.mins;
+    if (t.pnl > b.best) b.best = t.pnl;
+    if (t.pnl < b.worst) b.worst = t.pnl;
+  }
+  return Object.keys(by).map(k => by[k]).sort((a,b) => b.pnl - a.pnl);
+}
+
 function tickPositions(){
   if (S.tab !== "positions") return;
   for (const p of S.positions){
@@ -1675,6 +1750,9 @@ function showHelp(){
       'sudden gap can jump straight through one.</p>'+
       '<p><b>The chart pans and zooms.</b> Scroll to zoom, drag to slide back through history, double-click or hit '+
       '<b>Live</b> to snap back to the edge.</p>'+
+      '<p><b>A trailing stop</b> follows the best price your trade reaches and never walks back, so it locks in '+
+      'gains without capping them. Set the distance in the ticket or with <b>+ trail</b> in the blotter, then drag '+
+      'its line like any other level.</p>'+
       '<p><b>Limit and stop orders</b> rest on the chart until price reaches them. A limit buy waits below the '+
       'market, a stop buy waits above it. Margin is reserved when you place one and the fee is charged on the '+
       'fill; drag the line to move it or click the × to cancel. <b>½</b> in the blotter closes half a position.</p>'+
@@ -1795,13 +1873,15 @@ $("i-margin").oninput = e => { TK.margin = +e.target.value || 0; tickTicket(); }
 $("i-lev").oninput = e => { TK.lev = +e.target.value; $("l-lev").textContent = TK.lev+"×"; tickTicket(); };
 $("t-sl").onchange = e => { TK.sl = e.target.checked; $("f-sl").classList.toggle("hide", !TK.sl); tickTicket(); };
 $("t-tp").onchange = e => { TK.tp = e.target.checked; $("f-tp").classList.toggle("hide", !TK.tp); tickTicket(); };
+$("t-tr").onchange = e => { TK.tr = e.target.checked; $("f-tr").classList.toggle("hide", !TK.tr); tickTicket(); };
+$("i-tr").oninput = e => { TK.trv = clamp(+e.target.value||1, 1, 95); tickTicket(); };
 $("i-sl").oninput = e => { TK.slv = clamp(+e.target.value||1, 1, 95); tickTicket(); };
 $("i-tp").oninput = e => { TK.tpv = Math.max(1, +e.target.value||1); tickTicket(); };
 $("btn-submit").onclick = () => {
-  const mg = +$("i-margin").value || 0, sl = TK.sl?TK.slv:0, tp = TK.tp?TK.tpv:0;
+  const mg = +$("i-margin").value || 0, sl = TK.sl?TK.slv:0, tp = TK.tp?TK.tpv:0, tr = TK.tr?TK.trv:0;
   const r = TK.type === "market"
-    ? openTrade(S.asset, TK.side, mg, TK.lev, sl, tp)
-    : placeOrder(S.asset, TK.side, mg, TK.lev, TK.type, TK.price, sl, tp);
+    ? openTrade(S.asset, TK.side, mg, TK.lev, sl, tp, tr)
+    : placeOrder(S.asset, TK.side, mg, TK.lev, TK.type, TK.price, sl, tp, tr);
   if (!r.ok) toast(r.why, "bad");
   else $("ticket").classList.remove("open");
 };
@@ -1821,7 +1901,9 @@ $("tabbody").addEventListener("click", e => {
     const [kind, id] = add.dataset.add.split(":");
     const p = S.positions.find(x => x.id === +id);
     if (p){
-      if (kind === "sl") p.sl = 25; else p.tp = 50;
+      if (kind === "sl") p.sl = 25;
+      else if (kind === "tr"){ p.trail = 30; p.best = feed(p.sym).p; }
+      else p.tp = 50;
       S.asset = p.sym;
       toast("Drag the line on the chart to move it.", "");
       save(); renderAll();
@@ -1884,15 +1966,21 @@ function applyLevel(kind, id, px){
     if (o) o.px = px;
     return;
   }
-  if (kind === "nsl" || kind === "ntp"){
+  if (kind === "nsl" || kind === "ntp" || kind === "ntr"){
     const m = feed(S.asset), entry = m.p * (1 + TK.side*CFG.spread);
     const frac = TK.lev * TK.side * (px/entry - 1) * 100;
     if (kind === "nsl"){ TK.slv = clamp(Math.round(-frac), 1, 95); $("i-sl").value = TK.slv; }
+    else if (kind === "ntr"){ TK.trv = clamp(Math.round(-frac), 1, 95); $("i-tr").value = TK.trv; }
     else { TK.tpv = clamp(Math.round(frac), 1, 5000); $("i-tp").value = TK.tpv; }
     tickTicket();
   } else {
     const p = S.positions.find(x => x.id === id);
     if (!p) return;
+    if (kind === "tr"){
+      /* measured back from the best price seen, which is what the trail follows */
+      p.trail = clamp(Math.round(-p.lev * p.side * (px/p.best - 1) * 100), 1, 95);
+      return;
+    }
     const frac = p.lev * p.side * (px/p.entry - 1) * 100;
     if (kind === "sl") p.sl = clamp(Math.round(-frac), 1, 95);
     else p.tp = clamp(Math.round(frac), 1, 100000);
@@ -1903,9 +1991,13 @@ function clearLevel(kind, id){
   if (kind === "ord"){ cancelOrder(id); return; }
   if (kind === "nsl"){ TK.sl = false; $("t-sl").checked = false; $("f-sl").classList.add("hide"); tickTicket(); }
   else if (kind === "ntp"){ TK.tp = false; $("t-tp").checked = false; $("f-tp").classList.add("hide"); tickTicket(); }
+  else if (kind === "ntr"){ TK.tr = false; $("t-tr").checked = false; $("f-tr").classList.add("hide"); tickTicket(); }
   else {
     const p = S.positions.find(x => x.id === id);
-    if (p){ if (kind === "sl") p.sl = 0; else p.tp = 0; save(); renderTabs(); }
+    if (p){
+      if (kind === "sl") p.sl = 0; else if (kind === "tr") p.trail = 0; else p.tp = 0;
+      save(); renderTabs();
+    }
   }
 }
 cv.addEventListener("pointerdown", e => {
